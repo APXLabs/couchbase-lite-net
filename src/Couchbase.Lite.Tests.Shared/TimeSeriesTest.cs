@@ -50,6 +50,33 @@ namespace Couchbase.Lite
         }
 
         [Test]
+        public void TestRemoteLogging()
+        {
+            var loggingDb = manager.GetDatabase("cbl-logging");
+            var logger = new RemoteLogger(loggingDb, "remotelogging-test");
+            Log.AddLogger(logger);
+            var r = new Random();
+            for (int i = 0; i < 15; i++) {
+                
+                var secs = r.NextDouble();
+                Log.To.Database.W("RemoteLoggingTest", "A test warning message, waiting {0} sec", secs);
+                Log.To.Database.I("RemoteLoggingTest", "A test info message, waiting {0} sec", secs);
+                Log.To.Database.E("RemoteLoggingTest", "A test error message, waiting {0} sec", secs);
+                Thread.Sleep(TimeSpan.FromSeconds(secs));
+            }
+
+            logger.Flush();
+            logger.Dispose();
+
+            Thread.Sleep(3000);
+
+            Assert.AreEqual(1, loggingDb.GetDocumentCount());
+            var doc = loggingDb.CreateAllDocumentsQuery().Run().First();
+            var events = doc.Document.GetProperty("events").AsList<object>();
+            Assert.AreEqual(45, events.Count);
+        }
+
+        [Test]
         public void TestTimeSeries()
         {
             GenerateEventsSync();
@@ -198,7 +225,7 @@ namespace Couchbase.Lite
                     }
                 }
 
-                _ts.Flush().ContinueWith(task => 
+                _ts.FlushAsync().ContinueWith(task => 
                 {
                     mre.Set();
                     mre.Dispose();
@@ -214,23 +241,8 @@ namespace Couchbase.Lite
             var mre = new ManualResetEventSlim();
             Task.Factory.StartNew(() =>
             {
-                Console.WriteLine("Generating events...");
-                var sw = new Stopwatch();
-                var random = new Random();
-                for (int i = 0; i < 10000; i++) {
-                    sw.Start();
-                    while((sw.ElapsedTicks * 1000000) / Stopwatch.Frequency < 100) {
-                        Thread.SpinWait(10);
-                    }
-                    sw.Reset();
-                    var r = random.Next();
-                    _ts.AddEvent(new Dictionary<string, object> {
-                        { "i", i },
-                        { "random", r }
-                    });
-                }
-
-                _ts.Flush().ContinueWith(t => 
+                GenerateEvents();
+                _ts.FlushAsync().ContinueWith(t => 
                 {
                     mre.Set();
                     mre.Dispose();
@@ -242,8 +254,27 @@ namespace Couchbase.Lite
 
         private void GenerateEventsSync()
         {
-            GenerateEventsAsync().WaitOne(TimeSpan.FromSeconds(5));
-            Console.WriteLine("...Done generating events");
+            GenerateEvents();
+            _ts.Flush();
+        }
+
+        private void GenerateEvents()
+        {
+            Console.WriteLine("Generating events...");
+            var sw = new Stopwatch();
+            var random = new Random();
+            for (int i = 0; i < 10000; i++) {
+                sw.Start();
+                while((sw.ElapsedTicks * 1000000) / Stopwatch.Frequency < 100) {
+                    Thread.SpinWait(10);
+                }
+                sw.Reset();
+                var r = random.Next();
+                _ts.AddEvent(new Dictionary<string, object> {
+                    { "i", i },
+                    { "random", r }
+                });
+            }
         }
     }
 }

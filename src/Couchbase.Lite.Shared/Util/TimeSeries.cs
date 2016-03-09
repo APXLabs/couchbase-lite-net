@@ -24,10 +24,12 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
 using System.IO.MemoryMappedFiles;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace Couchbase.Lite.Util
 {
-    internal sealed class TimeSeries : IDisposable
+    public class TimeSeries : IDisposable
     {
         private static readonly string Tag = typeof(TimeSeries).Name;
         private const int MaxDocSize = 100 * 1024; // bytes
@@ -40,6 +42,7 @@ namespace Couchbase.Lite.Util
         private uint _eventsInFile;
         private string _docType;
         private string _path;
+        private ConcurrentQueue<IDictionary<string, object>> _docsToAdd;
 
         public TimeSeries(Database db, string docType)
         {
@@ -79,6 +82,10 @@ namespace Couchbase.Lite.Util
             }
 
             var props = new Dictionary<string, object>(eventToAdd);
+            if (_scheduler == null) {
+                return;
+            }
+
             _scheduler.StartNew(() =>
             {
                 props["t"] = time.MillisecondsSinceEpoch();
@@ -115,14 +122,23 @@ namespace Couchbase.Lite.Util
             });
         }
 
-        public Task Flush()
+        public Task FlushAsync()
         {
+            if (_scheduler == null) {
+                return Task.FromResult(false);
+            }
+
             return _scheduler.StartNew(() =>
             {
                 if(_eventsInFile > 0 || _out.Position > 0) {
                     TransferToDB();
                 }
             });
+        }
+
+        public void Flush()
+        {
+            FlushAsync().Wait();
         }
 
         public Replication CreatePushReplication(Uri remoteUrl, bool purgeWhenPushed)
@@ -208,6 +224,13 @@ namespace Couchbase.Lite.Util
                 gotEvent["t"] = Misc.CreateDate(curStamp);
                 gotEvent.Remove("dt");
                 yield return gotEvent;
+            }
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposing) {
+                Stop();
             }
         }
 
@@ -298,6 +321,29 @@ namespace Couchbase.Lite.Util
 
         }
 
+        private void SaveQueuedDocs()
+        {
+            var docsToAdd = Interlocked.Exchange<ConcurrentQueue<IDictionary<string, object>>>(ref _docsToAdd, null);
+            if (docsToAdd != null && docsToAdd.Count > 0) {
+                _db.RunInTransaction(() =>
+                {
+                    IDictionary<string, object> next = null;
+                    while(docsToAdd.TryDequeue(out next)) {
+                        var docID = next.GetCast<string>("_id");
+                        try {
+                            _db.GetDocument(docID).PutProperties(next);
+                        } catch(Exception e) {
+                            Log.To.NoDomain.W(Tag, String.Format("Couldn't save events to '{0}', recording...",
+                                docID), e);
+                            _error = e;
+                        }
+                    }
+
+                    return true;
+                });
+            }
+        }
+
         private void AddEventsToDB(IList<object> events)
         {
             if (events.Count == 0) {
@@ -328,19 +374,23 @@ namespace Couchbase.Lite.Util
             }
 
             var doc = new Dictionary<string, object> {
+                { "_id", docID },
                 { "type", _docType },
                 { "t0", t0 },
                 { "events", convertedEvents }
             };
 
-            _db.RunAsync((d) =>
-            {
-                try {
-                    _db.GetDocument(docID).PutProperties(doc);
-                } catch(Exception e) {
-                    Log.To.NoDomain.W(Tag, String.Format("Couldn't save events to '{0}'", docID), e);
-                }
-            });
+            bool firstDoc = false;
+            if (Interlocked.CompareExchange<ConcurrentQueue<IDictionary<string, object>>>(ref _docsToAdd,
+                   new ConcurrentQueue<IDictionary<string, object>>(), null) == null) {
+                firstDoc = true;
+            }
+
+            _docsToAdd.Enqueue(doc);
+            if (firstDoc) {
+                _db.RunAsync(d => SaveQueuedDocs());
+            }
+
         }
 
         private string MakeDocID(ulong timestamp)
@@ -348,7 +398,7 @@ namespace Couchbase.Lite.Util
             return String.Format("TS-{0}-{1:D8}", _docType, timestamp);
         }
 
-        private void Stop()
+        protected void Stop()
         {
             if (_scheduler != null) {
                 _scheduler.StartNew(() =>
@@ -367,7 +417,8 @@ namespace Couchbase.Lite.Util
 
         public void Dispose()
         {
-            Stop();
+            GC.SuppressFinalize(this);
+            Dispose(false);
         }
     }
 }
