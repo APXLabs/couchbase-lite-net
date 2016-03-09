@@ -91,7 +91,7 @@ namespace Couchbase.Lite.Util
                 }
 
                 var pos = _out.Position;
-                if(pos + json.Length + 20 > MaxDocSize || _eventsInFile > MaxDocEventCount) {
+                if(pos + json.Length + 20 > MaxDocSize || _eventsInFile >= MaxDocEventCount) {
                     TransferToDB();
                     pos = 0;
                 }
@@ -155,7 +155,7 @@ namespace Couchbase.Lite.Util
             // Start forwards query if I haven't already:
             var q = _db.CreateAllDocumentsQuery();
             ulong startStamp;
-            if (curSeries.Count > 0) {
+            if (curSeries != null && curSeries.Count > 0) {
                 startStamp = curSeries.Last().GetCast<ulong>("t");
                 q.InclusiveStart = false;
             } else {
@@ -174,16 +174,17 @@ namespace Couchbase.Lite.Util
             // OK, here is the block for the enumerator:
             var curIndex = 0;
             while (true) {
-                while (curIndex >= curSeries.Count) {
+                while (curIndex >= (curSeries == null ? 0 :curSeries.Count)) {
                     if (e == null) {
-                        yield return null;
+                        yield break;
                     }
 
                     if (!e.MoveNext()) {
-                        yield return null;
+                        e.Dispose();
+                        yield break;
                     }
 
-                    curSeries = e.Current.DocumentProperties.Get("events").AsList<IDictionary<string, object>>();
+                    curSeries = e.Current.Document.GetProperty("events").AsList<IDictionary<string, object>>();
                     curIndex = 0;
                 }
 
@@ -191,7 +192,11 @@ namespace Couchbase.Lite.Util
                 var gotEvent = curSeries[curIndex++];
                 var timeStamp = gotEvent.GetCast<ulong>("t");
                 if (timeStamp > endStamp) {
-                    yield return null;
+                    if (e != null) {
+                        e.Dispose();
+                    }
+
+                    yield break;
                 }
 
                 gotEvent["t"] = Misc.CreateDate(timeStamp);

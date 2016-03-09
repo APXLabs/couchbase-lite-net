@@ -25,13 +25,18 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Collections.Generic;
+using Couchbase.Lite.Tests;
+using System.Linq;
 
 namespace Couchbase.Lite
 {
     [TestFixture("ForestDB")]
     public class TimeSeriesTest : LiteTestCase
     {
+        private const string ScratchDbName = "cbl_replicator_scratch";
+        private static readonly DateTime FakeT0 = Misc.CreateDate(100000);
         private TimeSeries _ts;
+        private SyncGateway _sg;
 
         public TimeSeriesTest(string storageType) : base(storageType)
         {
@@ -40,6 +45,7 @@ namespace Couchbase.Lite
         protected override void SetUp()
         {
             base.SetUp();
+            _sg = new SyncGateway(GetReplicationProtocol(), GetReplicationServer());
             Assert.DoesNotThrow(() => _ts = new TimeSeries(database, "tstest"), "Could not create ts");
         }
 
@@ -61,6 +67,143 @@ namespace Couchbase.Lite
             }
         }
 
+        [Test]
+        public void TestPushTimeSeries()
+        {
+            if (!Boolean.Parse((string)GetProperty("replicationTestsEnabled"))) {
+                Assert.Inconclusive("Replication tests disabled.");
+                return;
+            }
+
+            using (var remoteDb = _sg.CreateDatabase(ScratchDbName)) {
+                var tsPush = _ts.CreatePushReplication(remoteDb.RemoteUri, true);
+                tsPush.Continuous = true;
+                Console.WriteLine("Starting replication");
+
+                var idleMre = new ManualResetEventSlim();
+                var stoppedMre = new ManualResetEventSlim();
+                tsPush.Changed += (sender, e) =>
+                {
+                    if(e.Status == ReplicationStatus.Idle && e.Source.GetPendingDocumentIDs().Count == 0) {
+                        idleMre.Set();
+                    } else if(e.Status == ReplicationStatus.Stopped) {
+                        stoppedMre.Set();
+                    }
+                };
+
+                tsPush.Start();
+
+                // Generate events:
+                var waitHandle = GenerateEventsAsync();
+                Console.WriteLine("Waiting for events...");
+                Assert.IsTrue(waitHandle.WaitOne(TimeSpan.FromSeconds(10)), "Waiting for events timed out");
+                Console.WriteLine("Waiting for replication to finish...");
+                Assert.IsTrue(idleMre.Wait(TimeSpan.FromSeconds(10)), "Timed out waiting for replication");
+                idleMre.Dispose();
+                Assert.IsNull(tsPush.LastError);
+
+                // Stop the replication:
+                tsPush.Stop();
+                Console.WriteLine("Waiting for replication to stop");
+                Assert.IsTrue(stoppedMre.Wait(TimeSpan.FromSeconds(10)), "Timed out waiting for replication to stop");
+                stoppedMre.Dispose();
+                Assert.IsNull(tsPush.LastError);
+
+                Thread.Sleep(2000);
+
+                // Did the docs get purged?
+                Assert.AreEqual(0, database.GetDocumentCount());
+            }
+        }
+
+        [Test]
+        public void TestQueryTimeSeries()
+        {
+            var waitHandle = GenerateFakeEventsAsync();
+            Assert.IsTrue(waitHandle.WaitOne(TimeSpan.FromSeconds(5)), "Timed out creating fake events");
+            CheckQuery(DateTime.MinValue, DateTime.MaxValue, Tuple.Create(0, 9999, FakeT0, FakeT0.AddSeconds(4999)));
+            CheckQuery(DateTime.MinValue, FakeT0 - TimeSpan.FromSeconds(1), 
+                Tuple.Create(-1, -1, DateTime.MinValue, DateTime.MinValue));
+            CheckQuery(FakeT0 + TimeSpan.FromSeconds(100), FakeT0 + TimeSpan.FromSeconds(200), 
+                Tuple.Create(200, 401, FakeT0 + TimeSpan.FromSeconds(100), FakeT0 + TimeSpan.FromSeconds(200)));
+            CheckQuery(FakeT0 + TimeSpan.FromSeconds(100), FakeT0 + TimeSpan.FromSeconds(2000),
+                Tuple.Create(200, 4001, FakeT0 + TimeSpan.FromSeconds(100), FakeT0 + TimeSpan.FromSeconds(2000)));
+            CheckQuery(FakeT0 + TimeSpan.FromSeconds(999), FakeT0 + TimeSpan.FromSeconds(1001),
+                Tuple.Create(1998, 2003, FakeT0 + TimeSpan.FromSeconds(999), FakeT0 + TimeSpan.FromSeconds(1001)));
+            CheckQuery(FakeT0 + TimeSpan.FromSeconds(999.5), FakeT0 + TimeSpan.FromSeconds(1001),
+                Tuple.Create(2000, 2003, FakeT0 + TimeSpan.FromSeconds(1000), FakeT0 + TimeSpan.FromSeconds(1001)));
+            CheckQuery(FakeT0 + TimeSpan.FromSeconds(1000), FakeT0 + TimeSpan.FromSeconds(1002),
+                Tuple.Create(2000, 2005, FakeT0 + TimeSpan.FromSeconds(1000), FakeT0 + TimeSpan.FromSeconds(1002)));
+            CheckQuery(FakeT0 + TimeSpan.FromSeconds(5555), DateTime.MinValue,
+                Tuple.Create(-1, -1, DateTime.MinValue, DateTime.MinValue));
+            CheckQuery(FakeT0 + TimeSpan.FromSeconds(5555), FakeT0 + TimeSpan.FromSeconds(999999),
+                Tuple.Create(-1, -1, DateTime.MinValue, DateTime.MinValue));
+        }
+
+        private void CheckQuery(DateTime t0, DateTime t1, Tuple<int, int, DateTime, DateTime> expected)
+        {
+            var e = _ts.GetEventsInRange(t0, t1);
+            int n = 0, i = -1;
+            int i0 = -1, i1 = -1;
+            var realT0 = DateTime.MinValue;
+            var realT1 = DateTime.MinValue;
+            var lastT = t0;
+            foreach (var storedEvent in e) {
+                i1 = storedEvent.GetCast<int>("i", -1);
+                Assert.AreNotEqual(-1, i1);
+                realT1 = storedEvent.GetCast<DateTime>("t");
+                if (n++ == 0) {
+                    i = i0 = i1;
+                    realT0 = realT1;
+                }
+
+                Assert.AreEqual(i, i1);
+                i++;
+                Assert.IsTrue(realT1 >= lastT);
+                lastT = realT1;
+            }
+
+            if (t1 < DateTime.MaxValue) {
+                Assert.IsTrue(realT1 <= t1);
+            }
+
+            Console.WriteLine("Query returned events {0:D4}-{1:D4} with time from {2} to {3}", i0, i1, realT0, realT1);
+            Assert.AreEqual(expected.Item1, i0);
+            Assert.AreEqual(expected.Item2, i1);
+            Assert.AreEqual(expected.Item3, realT0);
+            Assert.AreEqual(expected.Item4, realT1);
+        }
+
+        private WaitHandle GenerateFakeEventsAsync()
+        {
+            var mre = new ManualResetEventSlim();
+            Task.Factory.StartNew(() =>
+            {
+                Console.WriteLine("Generating fake-time events...");
+                var random = new Random();
+                var t = FakeT0;
+                for (int i = 0; i < 10000; i++) {
+                    var r = random.Next();
+                    _ts.AddEvent(new Dictionary<string, object> {
+                        { "i", i },
+                        { "random", r }
+                    }, t);
+
+                    if((i & 1) == 1) {
+                        t = t.AddSeconds(1);
+                    }
+                }
+
+                _ts.Flush().ContinueWith(task => 
+                {
+                    mre.Set();
+                    mre.Dispose();
+                });
+            }, TaskCreationOptions.LongRunning);
+
+            return mre.WaitHandle;
+        }
+
         // Generates 10000 events, one every 100µsec. Fulfils an expectation when they're all in the db.
         private WaitHandle GenerateEventsAsync()
         {
@@ -72,7 +215,9 @@ namespace Couchbase.Lite
                 var random = new Random();
                 for (int i = 0; i < 10000; i++) {
                     sw.Start();
-                    SpinWait.SpinUntil(() => (sw.ElapsedTicks * 1000000) / Stopwatch.Frequency >= 100);
+                    while((sw.ElapsedTicks * 1000000) / Stopwatch.Frequency < 100) {
+                        Thread.SpinWait(10);
+                    }
                     sw.Reset();
                     var r = random.Next();
                     _ts.AddEvent(new Dictionary<string, object> {
@@ -86,14 +231,14 @@ namespace Couchbase.Lite
                     mre.Set();
                     mre.Dispose();
                 });
-            });
+            }, TaskCreationOptions.LongRunning);
 
             return mre.WaitHandle;
         }
 
         private void GenerateEventsSync()
         {
-            GenerateEventsAsync().WaitOne(TimeSpan.FromSeconds(500));
+            GenerateEventsAsync().WaitOne(TimeSpan.FromSeconds(5));
             Console.WriteLine("...Done generating events");
         }
     }
