@@ -54,15 +54,18 @@ namespace Couchbase.Lite
         {
             GenerateEventsSync();
             var i = 0;
-            var lastT = 0UL;
+
             foreach (var row in database.CreateAllDocumentsQuery().Run()) {
+                var t0 = Convert.ToUInt64(row.Document.GetProperty("t0"));
+                Assert.Greater(t0, 0);
                 var events = row.Document.GetProperty("events").AsList<IDictionary<string, object>>();
-                Console.WriteLine("Doc {0}: {1} events", row.DocumentId, events.Count);
+                Console.WriteLine("Doc {0}: {1} events starting at {2}", row.DocumentId, events.Count, t0);
                 foreach (var evnt in events) {
                     Assert.AreEqual(i++, evnt.GetCast<int>("i"));
-                    var t = evnt.GetCast<ulong>("t");
-                    Assert.IsTrue(t >= lastT);
-                    lastT = t;
+                    var dt = evnt.Get("dt");
+                    if (dt != null) {
+                        Assert.Greater(Convert.ToInt32(dt), 0);
+                    }
                 }
             }
         }
@@ -159,7 +162,8 @@ namespace Couchbase.Lite
 
                 Assert.AreEqual(i, i1);
                 i++;
-                Assert.IsTrue(realT1 >= lastT);
+                Assert.GreaterOrEqual(realT1, lastT);
+                Assert.LessOrEqual(realT1, t1);
                 lastT = realT1;
             }
 

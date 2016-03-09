@@ -148,15 +148,20 @@ namespace Couchbase.Lite.Util
         {
             // Get the first series from the doc containing start (if any):
             IList<IDictionary<string, object>> curSeries = null;
+            var curStamp = 0UL;
             if (start > DateTime.MinValue) {
-                curSeries = GetEvents(start);
+                curSeries = GetEvents(start, ref curStamp);
             }
 
             // Start forwards query if I haven't already:
             var q = _db.CreateAllDocumentsQuery();
             ulong startStamp;
             if (curSeries != null && curSeries.Count > 0) {
-                startStamp = curSeries.Last().GetCast<ulong>("t");
+                startStamp = curStamp;
+                foreach(var gotEvent in curSeries) {
+                    startStamp += gotEvent.GetCast<ulong>("dt");
+                }
+
                 q.InclusiveStart = false;
             } else {
                 startStamp = start > DateTime.MinValue ? start.MillisecondsSinceEpoch() : 0;
@@ -186,12 +191,13 @@ namespace Couchbase.Lite.Util
 
                     curSeries = e.Current.Document.GetProperty("events").AsList<IDictionary<string, object>>();
                     curIndex = 0;
+                    curStamp = Convert.ToUInt64(e.Current.Document.GetProperty("t0"));
                 }
 
                 // Return the next event from curSeries
                 var gotEvent = curSeries[curIndex++];
-                var timeStamp = gotEvent.GetCast<ulong>("t");
-                if (timeStamp > endStamp) {
+                curStamp += gotEvent.GetCast<ulong>("dt");
+                if (curStamp > endStamp) {
                     if (e != null) {
                         e.Dispose();
                     }
@@ -199,12 +205,13 @@ namespace Couchbase.Lite.Util
                     yield break;
                 }
 
-                gotEvent["t"] = Misc.CreateDate(timeStamp);
+                gotEvent["t"] = Misc.CreateDate(curStamp);
+                gotEvent.Remove("dt");
                 yield return gotEvent;
             }
         }
 
-        private IList<IDictionary<string, object>> GetEvents(DateTime t)
+        private IList<IDictionary<string, object>> GetEvents(DateTime t, ref ulong startStamp)
         {
             var q = _db.CreateAllDocumentsQuery();
             var timestamp = t > DateTime.MinValue ? t.MillisecondsSinceEpoch() : 0;
@@ -212,17 +219,27 @@ namespace Couchbase.Lite.Util
             q.Descending = true;
             q.Limit = 1;
             q.Prefetch = true;
-            var row = default(QueryRow);
-            foreach (var r in q.Run()) {
-                row = r;
-            }
+            var row = q.Run().FirstOrDefault();
 
             if (row == null) {
                 return new List<IDictionary<string, object>>();
             }
 
             var events = row.DocumentProperties.Get("events").AsList<IDictionary<string, object>>();
-            return events.SkipWhile(x => x.GetCast<ulong>("t") < timestamp).ToList();
+            var skip = 0;
+            var ts = Convert.ToUInt64(row.Document.GetProperty("t0"));
+            foreach (var gotEvent in events) {
+                var prevTs = ts;
+                ts += gotEvent.GetCast<ulong>("dt");
+                if (ts >= timestamp) {
+                    startStamp = prevTs;
+                    break;
+                }
+
+                skip++;
+            }
+
+            return events.Skip(skip).ToList();
         }
 
         private void TransferToDB()
@@ -287,21 +304,39 @@ namespace Couchbase.Lite.Util
                 return;
             }
 
-            var nextEvent = events[0].AsDictionary<string, object>();
+            var convertedEvents = new List<Dictionary<string, object>>();
+            JsonUtility.PopulateNetObject(events, convertedEvents);
+            var nextEvent = convertedEvents[0];
             if (nextEvent == null) {
                 Log.To.NoDomain.W(Tag, "Invalid object found in log events, aborting...");
                 return;
             }
 
-            var timestamp = nextEvent.GetCast<ulong>("t");
-            var docID = MakeDocID(timestamp);
+            var t0 = nextEvent.GetCast<ulong>("t");
+            var docID = MakeDocID(t0);
+
+            // Convert all timestamps to relative:
+            var t = t0;
+            foreach (var storedEvent in convertedEvents) {
+                var tnew = storedEvent.GetCast<ulong>("t");
+                if (tnew > t) {
+                    storedEvent["dt"] = tnew - t;
+                }
+
+                storedEvent.Remove("t");
+                t = tnew;
+            }
+
+            var doc = new Dictionary<string, object> {
+                { "type", _docType },
+                { "t0", t0 },
+                { "events", convertedEvents }
+            };
+
             _db.RunAsync((d) =>
             {
                 try {
-                    _db.GetDocument(docID).PutProperties(new Dictionary<string, object> {
-                        { "type", _docType },
-                        { "events", events }
-                    });
+                    _db.GetDocument(docID).PutProperties(doc);
                 } catch(Exception e) {
                     Log.To.NoDomain.W(Tag, String.Format("Couldn't save events to '{0}'", docID), e);
                 }
