@@ -18,6 +18,8 @@
     <AndroidUseLatestPlatformSdk>True</AndroidUseLatestPlatformSdk>
     <TargetFrameworkVersion>v6.0</TargetFrameworkVersion>
     <AndroidManifest>Properties\AndroidManifest.xml</AndroidManifest>
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -55,6 +57,7 @@
   <ItemGroup>
     <Compile Include="App.cs" />
     <Compile Include="MainActivity.cs" />
+    <Compile Include="MediaHttpServer.cs" />
     <Compile Include="Resources\Resource.Designer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Storage.cs" />
@@ -82,15 +85,20 @@
       <Project>{5615e423-d0fd-4f99-a99c-061679615cee}</Project>
       <Name>Couchbase.Lite.Android</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Couchbase.Lite.Shared\vendor\cbforest\CSharp\cbforest-sharp.Droid\cbforest-sharp.Droid.csproj">
-      <Project>{71fcf2bd-f5d4-4d1b-a895-7e7f6967d974}</Project>
-      <Name>cbforest-sharp.Droid</Name>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <AndroidAsset Include="Assets\dizzy.mp4" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\Xamarin\Android\Xamarin.Android.CSharp.targets" />
+  <Import Project="..\packages\Couchbase.Lite.Storage.ForestDB.1.2.0.1\build\MonoAndroid\Couchbase.Lite.Storage.ForestDB.targets" Condition="Exists('..\packages\Couchbase.Lite.Storage.ForestDB.1.2.0.1\build\MonoAndroid\Couchbase.Lite.Storage.ForestDB.targets')" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\Couchbase.Lite.Storage.ForestDB.1.2.0.1\build\MonoAndroid\Couchbase.Lite.Storage.ForestDB.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Couchbase.Lite.Storage.ForestDB.1.2.0.1\build\MonoAndroid\Couchbase.Lite.Storage.ForestDB.targets'))" />
+    <Error Condition="!Exists('..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets'))" />
+  </Target>
+  <Import Project="..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets" Condition="Exists('..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets')" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
      Other similar extension points exist, see Microsoft.Common.targets.
 		<Target Name="BeforeBuild">

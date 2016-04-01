@@ -12,22 +12,30 @@ namespace SeekableEncryptedVideo
     public class Storage
     {
         private Database _db = null;
+        private const string DB_NAME = "test";
+        private const string PASSWORD = "password";
+        private ISymmetricKey _key;
 
         /// <summary>
         /// Constructs a Storage
         /// </summary>
         public Storage()
         {
+            _key = new SymmetricKey(PASSWORD);
 
             var options = new DatabaseOptions
             {
-                EncryptionKey = new SymmetricKey("fooo"),
+                EncryptionKey = _key,
                 Create = true,
                 StorageType = DatabaseOptions.FORESTDB_STORAGE
             };
 
+            // ensure that the database is empty
+            //var db = Manager.SharedInstance.GetExistingDatabase(DB_NAME);
+            //db?.Delete();
 
-            _db = Manager.SharedInstance.OpenDatabase("test", options);
+            //_db = Manager.SharedInstance.GetDatabase(DB_NAME);
+            _db = Manager.SharedInstance.OpenDatabase(DB_NAME, options);
         }
 
         /// <summary>
@@ -66,6 +74,16 @@ namespace SeekableEncryptedVideo
             var rev = doc.CurrentRevision;
             var att = rev.GetAttachment("video.mp4");
             return att.ContentStream;
+        }
+
+        public byte[] Encrypt(byte[] data)
+        {
+            return _key.EncryptData(data);
+        }
+
+        public byte[] Decrypt(byte[] data)
+        {
+            return _key.DecryptData(data);
         }
     }
 }
