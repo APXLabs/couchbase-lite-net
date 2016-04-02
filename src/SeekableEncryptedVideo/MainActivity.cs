@@ -39,17 +39,12 @@ namespace SeekableEncryptedVideo
             };
 
             _videoView.RequestFocus();
+            _videoView.Touch += (sender, args) => _mediacontroller?.Show();
             _mediacontroller = new MediaController(this);
             _mediacontroller.SetMediaPlayer(this);
             _mediacontroller.SetAnchorView(_videoView);
 
             Task.Run(() => DoTests());
-        }
-
-        public override bool OnGenericMotionEvent(MotionEvent e)
-        {
-            _mediacontroller?.Show();
-            return base.OnGenericMotionEvent(e);
         }
 
         private  void DoTests()
