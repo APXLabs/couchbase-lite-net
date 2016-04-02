@@ -32,9 +32,15 @@ namespace SeekableEncryptedVideo
             _textView = FindViewById<TextView>(Resource.Id.textView);
             _videoView = FindViewById < VideoView>(Resource.Id.videoView);
             _videoView.SetVideoURI(Uri.Parse("http://127.0.0.1:8001/fooo"));
-            _videoView.Prepared += (sender, args) => _videoView.Start();
+            _videoView.Prepared += (sender, args) =>
+            {
+                _videoView.Start();
+                _mediacontroller.Show();
+            };
 
+            _videoView.RequestFocus();
             _mediacontroller = new MediaController(this);
+            _mediacontroller.SetMediaPlayer(this);
             _mediacontroller.SetAnchorView(_videoView);
 
             Task.Run(() => DoTests());

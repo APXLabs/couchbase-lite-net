@@ -138,7 +138,7 @@ namespace CblCryptoTestApp
 			Log.Debug(TAG, "HandleFullRequest");
 
 			response.StatusCode = 200;
-			response.AddHeader("Content-Length", inputStream.Length.ToString());
+			//response.AddHeader("Content-Length", inputStream.Length.ToString());
 
 			// Decrypt stream
 			try

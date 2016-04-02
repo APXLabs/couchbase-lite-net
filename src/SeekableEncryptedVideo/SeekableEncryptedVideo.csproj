@@ -49,6 +49,14 @@
     </Reference>
     <Reference Include="Mono.Android" />
     <Reference Include="mscorlib" />
+    <Reference Include="Newtonsoft.Json, Version=7.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.7.0.1\lib\portable-net40+sl5+wp80+win8+wpa81\Newtonsoft.Json.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Stateless, Version=2.5.21.0, Culture=neutral, PublicKeyToken=93038f0927583c9a, processorArchitecture=MSIL">
+      <HintPath>..\packages\Stateless.2.5.21.0\lib\portable-net40+sl50+win+wp80\Stateless.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -97,8 +105,10 @@
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\Couchbase.Lite.Storage.ForestDB.1.2.0.1\build\MonoAndroid\Couchbase.Lite.Storage.ForestDB.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Couchbase.Lite.Storage.ForestDB.1.2.0.1\build\MonoAndroid\Couchbase.Lite.Storage.ForestDB.targets'))" />
     <Error Condition="!Exists('..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets'))" />
+    <Error Condition="!Exists('..\packages\Couchbase.Lite.Storage.SQLCipher.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SQLCipher.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Couchbase.Lite.Storage.SQLCipher.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SQLCipher.targets'))" />
   </Target>
   <Import Project="..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets" Condition="Exists('..\packages\Couchbase.Lite.Storage.SystemSQLite.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SystemSQLite.targets')" />
+  <Import Project="..\packages\Couchbase.Lite.Storage.SQLCipher.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SQLCipher.targets" Condition="Exists('..\packages\Couchbase.Lite.Storage.SQLCipher.1.2\build\MonoAndroid\Couchbase.Lite.Storage.SQLCipher.targets')" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
      Other similar extension points exist, see Microsoft.Common.targets.
 		<Target Name="BeforeBuild">
