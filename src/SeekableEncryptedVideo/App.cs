@@ -14,15 +14,14 @@ namespace SeekableEncryptedVideo
         public override void OnCreate()
         {
             base.OnCreate();
-            Storage foo = new Storage();
-            
+
             var container = TinyIoCContainer.Current;
             container.Register<Storage, Storage>().AsSingleton();
             container.Register<MediaHttpServer, MediaHttpServer>().AsSingleton(); ;
 
             var storage = container.Resolve<Storage>();
             var video = Assets.Open("dizzy.mp4");
-            storage.InsertVideo(video);
+            bool done = storage.InsertVideo(video).Result;
 
             var server = container.Resolve <MediaHttpServer>();
             server.Start();

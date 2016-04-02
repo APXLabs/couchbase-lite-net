@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Couchbase.Lite;
+using Couchbase.Lite.Android.Store;
 using Couchbase.Lite.Store;
 
 namespace SeekableEncryptedVideo
@@ -21,18 +22,14 @@ namespace SeekableEncryptedVideo
         /// </summary>
         public Storage()
         {
-            _key = new SymmetricKey(PASSWORD);
+            _key = new SeekableSymmetricKey(PASSWORD);
 
             var options = new DatabaseOptions
             {
                 EncryptionKey = _key,
                 Create = true,
-                StorageType = DatabaseOptions.FORESTDB_STORAGE
+                StorageType = DatabaseOptions.SQLITE_STORAGE
             };
-
-            // ensure that the database is empty
-            //var db = Manager.SharedInstance.GetExistingDatabase(DB_NAME);
-            //db?.Delete();
 
             //_db = Manager.SharedInstance.GetDatabase(DB_NAME);
             _db = Manager.SharedInstance.OpenDatabase(DB_NAME, options);

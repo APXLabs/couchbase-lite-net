@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using Couchbase.Lite.Store;
 using Javax.Crypto;
 using Javax.Crypto.Spec;
@@ -21,10 +23,15 @@ namespace Couchbase.Lite.Android.Store
     {
         private const string CRYPTO_ALGORITHM_NAME = "AES/CTR/NoPadding";
         private const int INITIALIZATION_VECTOR_LENGTH = 16;
+        private const string DEFAULT_SALT = "Salty McNaCl";
+        private const int DEFAULT_PBKDF_ROUNDS = 64000;
+        private const int KEY_SIZE = 32;
+        private const int BLOCK_SIZE = 16;
+        private const int IV_SIZE = BLOCK_SIZE;
 
         private readonly byte[] _password;
         private readonly byte[] _initializationVector;
-
+        
         #region Properties
 
         /// <summary>
@@ -51,6 +58,11 @@ namespace Couchbase.Lite.Android.Store
 
         #endregion
 
+
+        public SeekableSymmetricKey(string password) : this(GetKey(password), new byte[IV_SIZE])
+        {
+           
+        }
 
         /// <summary>
         /// Constructs an AesStreamingEncryptionStrategy
@@ -155,6 +167,35 @@ namespace Couchbase.Lite.Android.Store
             cipher.Init(false, cipherParams);
 
             return new CipherStream(sourceStream, cipher, null);
+        }
+
+
+        private static byte[] GetKey(string password)
+        {
+            return GetKey(password, Encoding.UTF8.GetBytes(DEFAULT_SALT), DEFAULT_PBKDF_ROUNDS, KEY_SIZE);     
+        }
+
+        private static byte[] GetKey(string password, byte[] salt, int rounds, int keySizeBytes)
+        {
+            if (password == null)
+            {
+                throw new ArgumentNullException("password");
+            }
+            if (salt.Length <= 4)
+            {
+                throw new ArgumentOutOfRangeException("salt", "Value is too short");
+            }
+            if (rounds <= 200)
+            {
+                throw new ArgumentOutOfRangeException("rounds", "Insufficient rounds");
+            }
+
+            using (Rfc2898DeriveBytes pbkdf2 = new Rfc2898DeriveBytes(password, salt))
+            {
+                pbkdf2.IterationCount = rounds;
+                return pbkdf2.GetBytes(keySizeBytes);
+            }
+            
         }
     }
 }
