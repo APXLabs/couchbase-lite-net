@@ -75,7 +75,7 @@ Target "Package" (fun _ ->
     let nuspecProps = getNuspecProperties(File.ReadAllText(nuspecPath))
     
     let version = match TeamCityBuildNumber.IsSome with
-                      | true ->  sprintf "%s.%s-apx" nuspecProps.Version TeamCityBuildNumber.Value
+                      | true ->  sprintf "%s%s-apx" nuspecProps.Version TeamCityBuildNumber.Value
                       | false -> sprintf "%s-apx" nuspecProps.Version
     
     let basePath =  Path.GetFullPath "."
