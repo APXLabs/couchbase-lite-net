@@ -73,10 +73,12 @@ Target "Package" (fun _ ->
     ensureDirectory artifactsBuildDir
     
     let nuspecProps = getNuspecProperties(File.ReadAllText(nuspecPath))
-    
-    let version = match TeamCityBuildNumber.IsSome with
-                      | true ->  sprintf "%s%s-apx" nuspecProps.Version TeamCityBuildNumber.Value
-                      | false -> sprintf "%s-apx" nuspecProps.Version
+        
+    let tcBuildValue = match TeamCityBuildNumber with
+                       | Some(num) -> num
+                       | None -> ""
+
+    let version = sprintf "%s%s-apx" nuspecProps.Version tcBuildValue
     
     let basePath =  Path.GetFullPath "."
     // create and execute the command ourselves, since the NuGet helper doesn't allow us to set the BasePath command argument which we need
