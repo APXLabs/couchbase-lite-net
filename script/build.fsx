@@ -29,7 +29,7 @@ let net45Solution = "src"</>"Couchbase.Lite.Net45.sln"
 let androidSolution = "src"</>"Couchbase.Lite.Android.sln"
 let net45Project = "src"</>"Couchbase.Lite.Net45"</>"Couchbase.Lite.Net45.csproj"
 let androidProject = "src"</>"Couchbase.Lite.Android"</>"Couchbase.Lite.Android.csproj"
-let cbForestProject = "src"</>"Couchbase.Lite.Shared"</>"vendor"</>"cbforest"</>"CSharp"</>"cbforest-sharp.Net45"</>"cbforest-sharp.Net45.csproj"
+let cbForestProject = "src"</>"StorageEngines"</>"ForestDB"</>"CBForest"</>"CSharp"</>"cbforest-sharp.Net45"</>"cbforest-sharp.Net45.csproj"
 
 // nuget related paths
 let nugetPath = Path.GetFullPath(@"./src/.nuget/Nuget.Exe")
@@ -38,7 +38,7 @@ let artifactsNuGetDir = Path.GetFullPath(@"./artifacts/nuget/")
 let artifactsBuildDir = Path.GetFullPath(@"./artifacts/build/")
 
 Target "Bootstrap"(fun _ ->
-    CopyDir @"src\Couchbase.Lite.Shared\vendor\cbforest\CSharp\prebuilt" @"script\paket-files\github.com\" ( fun _-> true)
+    CopyDir @"src\StorageEngines\ForestDB\CBForest\CSharp\prebuilt" @"script\paket-files\github.com\" ( fun _-> true)
 
 )
 
