@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
@@ -55,11 +55,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Store\BlobKey.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Store\BlobStore.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Store\BlobStoreWriter.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Store\ConflictResolutionStrategy.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Store\ContentValues.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Store\Cursor.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Store\ISymmetricKey.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Store\JsonCollator.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Store\RevIdCollator.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Store\SQLException.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Store\Status.cs" />
