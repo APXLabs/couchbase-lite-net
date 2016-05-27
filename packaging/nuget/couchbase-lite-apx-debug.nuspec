@@ -3,7 +3,7 @@
   <metadata>
     <id>Couchbase.Lite</id>
     <title>Couchbase Lite</title>
-    <version>1.2.0.4</version>
+    <version>1.2.0.4-debug</version>
     <authors>Jim Borden, Zachary Gramana</authors>
     <owners>Couchbase</owners>
     <licenseUrl>https://github.com/couchbase/couchbase-lite-net/blob/master/LICENSE</licenseUrl>
@@ -49,10 +49,10 @@ For full details please see https://github.com/couchbase/couchbase-lite-net/rele
   </metadata>
   <files>
     <file target="" src="packaging/nuget/readme.txt" />
-    <file target="lib/net45" src="src/Couchbase.Lite.Net45/bin/Release/**Couchbase.Lite.*" />
-    <file target="lib/net45" src="src/Couchbase.Lite.Net45/bin/Release/**cbforest-sharp*" />
-    <file target="lib/net45" src="src/Couchbase.Lite.Net45/bin/Release/**SQLitePCL.*" />
-    <file target="lib/MonoAndroid" src="src/Couchbase.Lite.Android/bin/Release/**Couchbase.Lite.*" />
-    <file target="lib/MonoAndroid" src="src/Couchbase.Lite.Android/bin/Release/**cbforest-sharp*" />
+    <file target="lib/net45" src="src/Couchbase.Lite.Net45/bin/Debug/**Couchbase.Lite.*" />
+    <file target="lib/net45" src="src/Couchbase.Lite.Net45/bin/Debug/**cbforest-sharp*" />
+    <file target="lib/net45" src="src/Couchbase.Lite.Net45/bin/Debug/**SQLitePCL.*" />
+    <file target="lib/MonoAndroid" src="src/Couchbase.Lite.Android/bin/Debug/**Couchbase.Lite.*" />
+    <file target="lib/MonoAndroid" src="src/Couchbase.Lite.Android/bin/Debug/**cbforest-sharp*" />
   </files>
 </package>
