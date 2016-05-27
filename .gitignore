@@ -163,3 +163,4 @@ sync_gateway
 #Paket
 script/paket-files
 !script/.paket/paket.bootstrapper.exe
+/script/.paket/paket.exe
