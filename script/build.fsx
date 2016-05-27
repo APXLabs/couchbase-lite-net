@@ -7,22 +7,30 @@ open System.IO
 open System
 
 
-
-let buildMode = "Release"
-let setParams defaults =
+let releaseParams defaults =
         { defaults with
             Verbosity = Some(Quiet)
             Targets = [
-                        "Clean"
                         "Rebuild"
                       ]
             Properties =
                 [
                     "Optimize", "True"
                     "DebugSymbols", "True"
-                    "Configuration", buildMode
+                    "Configuration", "Release"
                 ]
          }
+
+let debugParams releaseParams =
+        { releaseParams with
+            Properties =
+                [
+                    "Optimize", "True"
+                    "DebugSymbols", "True"
+                    "Configuration", "Debug"
+                ]
+         }
+
 
 // solution and project paths
 let net45Solution = "src"</>"Couchbase.Lite.Net45.sln"
@@ -74,7 +82,10 @@ Target "Build" (fun _ ->
         net45Project
         androidProject
     ]
-    |> List.iter(fun proj ->  build setParams proj |> DoNothing)
+    |> List.iter(fun proj ->
+        build releaseParams proj
+        build debugParams proj
+        |> DoNothing)
 
     //// Workaround for https://github.com/fsharp/FAKE/issues/1079
     if restoreFailureHandled then traceEndTask "Build" "Error restoring packages was handled"
