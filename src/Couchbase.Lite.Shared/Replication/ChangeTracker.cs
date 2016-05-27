@@ -44,6 +44,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -54,8 +55,6 @@ using Couchbase.Lite;
 using Couchbase.Lite.Auth;
 using Couchbase.Lite.Replicator;
 using Couchbase.Lite.Util;
-using Sharpen;
-using System.Net;
 
 namespace Couchbase.Lite.Replicator
 {
@@ -73,8 +72,6 @@ namespace Couchbase.Lite.Replicator
     internal class ChangeTracker
     {
         private const string TAG = "ChangeTracker";
-
-        const Int32 LongPollModeLimit = 500;
 
         private Int32 _heartbeatMilliseconds = 300000;
 
@@ -112,6 +109,8 @@ namespace Couchbase.Lite.Replicator
         private bool _initialSync;
 
         CancellationTokenSource changesFeedRequestTokenSource;
+
+        private CouchbaseLiteHttpClient _httpClient;
 
         internal RemoteServerVersion ServerType { get; private set; }
 
@@ -166,24 +165,6 @@ namespace Couchbase.Lite.Replicator
             this.client = client;
         }
 
-        public string GetDatabaseName()
-        {
-            string result = null;
-            if (databaseURL != null)
-            {
-                result = databaseURL.AbsolutePath;
-                if (result != null)
-                {
-                    int pathLastSlashPos = result.LastIndexOf('/');
-                    if (pathLastSlashPos > 0)
-                    {
-                        result = result.Substring(pathLastSlashPos);
-                    }
-                }
-            }
-            return result;
-        }
-
         public string GetChangesFeedPath()
         {
             if (UsePost)
@@ -194,10 +175,6 @@ namespace Couchbase.Lite.Replicator
             var path = new StringBuilder("_changes?feed=");
             path.Append(GetFeed());
 
-            if (mode == ChangeTrackerMode.LongPoll)
-            {
-                path.Append(string.Format("&limit={0}", LongPollModeLimit));
-            }
             path.Append(string.Format("&heartbeat={0}", _heartbeatMilliseconds));
             if (includeConflicts) {
                 path.Append("&style=all_docs");
@@ -216,7 +193,7 @@ namespace Couchbase.Lite.Replicator
             {
                 filterName = "_doc_ids";
                 filterParams = new Dictionary<string, object>();
-                filterParams.Put("doc_ids", docIDs);
+                filterParams["doc_ids"] = docIDs;
             }
             if (filterName != null)
             {
@@ -308,45 +285,25 @@ namespace Couchbase.Lite.Replicator
             }
             AddRequestHeaders(Request);
 
-            var maskedRemoteWithoutCredentials = url.ToString();
-            maskedRemoteWithoutCredentials = maskedRemoteWithoutCredentials.ReplaceAll("://.*:.*@", "://---:---@");
-            Log.V(TAG, "Making request to " + maskedRemoteWithoutCredentials);
+            Log.V(TAG, "Making request to {0}", new SecureLogUri(url));
 
             if (tokenSource.Token.IsCancellationRequested) {
                 return;
             }
-
-            HttpClient httpClient = null;
+                
             try {
-                httpClient = clientCopy.GetHttpClient();
-                var challengeResponseAuth = Authenticator as IChallengeResponseAuthenticator;
-                if(challengeResponseAuth != null) {
-                    challengeResponseAuth.PrepareWithRequest(Request);
-                }
-         
-                var authHeader = AuthUtils.GetAuthenticationHeaderValue(Authenticator, Request.RequestUri);
-                if (authHeader != null)
-                {
-                    httpClient.DefaultRequestHeaders.Authorization = authHeader;
-                }
 
                 changesFeedRequestTokenSource = CancellationTokenSource.CreateLinkedTokenSource(tokenSource.Token);
 
                 var option = mode == ChangeTrackerMode.LongPoll ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead;
-                var info = httpClient.SendAsync(
+                _httpClient.Authenticator = Authenticator;
+                var info = _httpClient.SendAsync(
                     Request, 
                     option,
                     changesFeedRequestTokenSource.Token
                 );
 
-                info.ContinueWith(t1 => {
-                    ChangeFeedResponseHandler(t1).ContinueWith(t2 =>
-                    {
-                        if(httpClient != null) {
-                            httpClient.Dispose();
-                        }
-                    });
-                }, changesFeedRequestTokenSource.Token, 
+                info.ContinueWith(ChangeFeedResponseHandler, changesFeedRequestTokenSource.Token, 
                     TaskContinuationOptions.LongRunning, 
                     TaskScheduler.Default);
             }
@@ -507,24 +464,15 @@ namespace Couchbase.Lite.Replicator
             return true;
         }
 
-        public void SetUpstreamError(string message)
-        {
-            Log.W(TAG, this + string.Format(": Server error: {0}", message));
-            this.Error = new Exception(message);
-        }
-
-        Thread thread;
-
         public bool Start()
         {
-            if (IsRunning)
-            {
+            if (IsRunning) {
                 return false;
             }
 
-            this.Error = null;
-            this.thread = new Thread(Run) { IsBackground = true, Name = "Change Tracker Thread" };
-            thread.Start();
+            _httpClient = client.GetHttpClient();
+            Error = null;
+            WorkExecutor.StartNew(Run);
 
             return true;
         }
@@ -544,6 +492,7 @@ namespace Couchbase.Lite.Replicator
                 Log.D(TAG, "changed tracker asked to stop");
 
                 IsRunning = false;
+                Misc.SafeDispose(ref _httpClient);
 
                 var feedTokenSource = changesFeedRequestTokenSource;
                 if (feedTokenSource != null && !feedTokenSource.IsCancellationRequested)
@@ -587,11 +536,6 @@ namespace Couchbase.Lite.Replicator
         public bool IsRunning
         {
             get; private set;
-        }
-
-        internal void SetRequestHeaders(IDictionary<String, Object> requestHeaders)
-        {
-            RequestHeaders = requestHeaders;
         }
 
         private void ProcessLongPollStream(Task<Stream> t)
@@ -673,7 +617,7 @@ namespace Couchbase.Lite.Replicator
             if (docIDs != null && docIDs.Count > 0) {
                 filterName = "_doc_ids";
                 filterParams = new Dictionary<string, object>();
-                filterParams.Put("doc_ids", docIDs);
+                filterParams["doc_ids"] = docIDs;
             }
 
             var bodyParams = new Dictionary<string, object>();
@@ -692,10 +636,6 @@ namespace Couchbase.Lite.Replicator
                 _initialSync = false;
                 // On first replication we can skip getting deleted docs. (SG enhancement in ver. 1.2)
                 bodyParams["active_only"] = true;
-            }
-
-            if (mode == ChangeTrackerMode.LongPoll) {
-                bodyParams["limit"] = LongPollModeLimit;
             }
 
             if (filterName != null) {

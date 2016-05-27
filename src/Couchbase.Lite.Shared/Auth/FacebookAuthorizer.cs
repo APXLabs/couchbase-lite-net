@@ -46,16 +46,16 @@ using System.Linq;
 using Couchbase.Lite;
 using Couchbase.Lite.Auth;
 using Couchbase.Lite.Util;
-using Sharpen;
 using System.Collections.Concurrent;
+using System.Text;
 
 namespace Couchbase.Lite.Auth
 {
     internal class FacebookAuthorizer : Authorizer
     {
-        public const string LOGIN_PARAMETER_ACCESS_TOKEN = "access_token";
-        public const string QUERY_PARAMETER = "facebookAccessToken";
-        public const string QUERY_PARAMETER_EMAIL = "email";
+        internal const string LoginParameterAccessToken = "access_token";
+        internal const string QueryParameter = "facebookAccessToken";
+        internal const string QueryParameterEmail = "email";
 
         private readonly static ConcurrentDictionary<string[], string> _AccessTokens =
             new ConcurrentDictionary<string[], string>(new StringArrayComparer());
@@ -79,7 +79,7 @@ namespace Couchbase.Lite.Auth
             string accessToken = TokenForSite(site);
             if (accessToken != null)
             {
-                loginParameters[LOGIN_PARAMETER_ACCESS_TOKEN] = accessToken;
+                loginParameters[LoginParameterAccessToken] = accessToken;
                 return loginParameters;
             }
             else
@@ -113,6 +113,22 @@ namespace Couchbase.Lite.Auth
             }
 
             return accessToken;
+        }
+
+        public override string ToString()
+        {
+            var sb = new StringBuilder("[FacebookAuthorizer (");
+            foreach (var pair in _AccessTokens) {
+                if (pair.Key[0] == _emailAddress) {
+                    sb.AppendFormat("key={0} value={1}, ", 
+                        new SecureLogJsonString(pair.Key, LogMessageSensitivity.PotentiallyInsecure), 
+                        new SecureLogString(pair.Value, LogMessageSensitivity.Insecure));
+                }
+            }
+
+            sb.Remove(sb.Length - 2, 2);
+            sb.Append(")]");
+            return sb.ToString();
         }
 
         private class StringArrayComparer : IEqualityComparer<string[]>

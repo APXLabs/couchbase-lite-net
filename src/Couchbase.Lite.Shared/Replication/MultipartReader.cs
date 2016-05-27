@@ -45,9 +45,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-using Couchbase.Lite.Support;
-using Sharpen;
-
 namespace Couchbase.Lite.Support
 {
     internal class MultipartReader
@@ -84,7 +81,8 @@ namespace Couchbase.Lite.Support
 
         #region Properties
 
-        public IEnumerable<byte> Boundary
+        // Used in tests
+        internal IEnumerable<byte> Boundary
         {
             get {
                 return _boundary;
@@ -244,7 +242,7 @@ namespace Couchbase.Lite.Support
                     var headerTokenizer = header.Split(':');
                     var key = headerTokenizer[0].Trim ();
                     var value = headerTokenizer[1].Trim ();
-                    _headers.Put (key, value);
+                    _headers[key] = value;
                 }
             }
         }

@@ -27,10 +27,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Couchbase.Lite.Util;
 
-#if FORESTDB
-using CBForest;
-#endif
-
 namespace Couchbase.Lite
 {
     //Eventually split this into another assembly
@@ -39,7 +35,9 @@ namespace Couchbase.Lite
         
         #region Constants
 
-        private static readonly JsonSerializerSettings settings = new JsonSerializerSettings { 
+        private static readonly string Tag = typeof(NewtonsoftJsonSerializer).Name;
+
+        private static JsonSerializerSettings settings = new JsonSerializerSettings { 
             ReferenceLoopHandling = ReferenceLoopHandling.Ignore
         };
 
@@ -50,10 +48,31 @@ namespace Couchbase.Lite
         #region Variables
 
         private JsonTextReader _textReader;
+        private JsonSerializationSettings _settings = new JsonSerializationSettings();
 
         #endregion
 
         #region Properties
+
+        public JsonSerializationSettings Settings
+        {
+            get { return _settings; }
+            set { 
+                if (_settings == value) {
+                    return;
+                }
+
+                Log.I(Tag, "Changing global JSON serialization settings from {0} to {1}", _settings, value);
+                _settings = value;
+                if (_settings.DateTimeHandling == DateTimeHandling.UseDateTime) {
+                    settings.DateParseHandling = DateParseHandling.DateTime;
+                    settings.DateTimeZoneHandling = DateTimeZoneHandling.Local;
+                } else {
+                    settings.DateParseHandling = DateParseHandling.DateTimeOffset;
+                    settings.DateTimeZoneHandling = DateTimeZoneHandling.RoundtripKind;
+                }
+            }
+        }
 
         public JsonToken CurrentToken
         {
@@ -156,32 +175,7 @@ namespace Couchbase.Lite
         {
             return new NewtonsoftJsonSerializer();
         }
-
-        #if FORESTDB
-
-        public unsafe C4Key* SerializeToKey(object value)
-        {
-            var retVal = Native.c4key_new();
-            using (var jsonWriter = new JsonC4KeyWriter(retVal)) {
-                var serializer = new JsonSerializer();
-                serializer.ReferenceLoopHandling = ReferenceLoopHandling.Ignore;
-                serializer.Serialize(jsonWriter, value);
-            }
-
-            return retVal;
-        }
-
-        public T DeserializeKey<T>(C4KeyReader keyReader)
-        {
-            using (var jsonReader = new JsonC4KeyReader(keyReader)) {
-                var serializer = new JsonSerializer();
-                serializer.ReferenceLoopHandling = ReferenceLoopHandling.Ignore;
-                return serializer.Deserialize<T>(jsonReader);
-            }
-        }
-
-        #endif
-            
+ 
         #endregion
 
         #region IDisposable

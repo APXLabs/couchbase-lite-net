@@ -73,6 +73,16 @@ namespace Couchbase.Lite
         //Make public in the future
         internal static IJsonSerializer SerializationEngine { get; set; }
 
+        /// <summary>
+        /// Gets or sets the values pertaining to serialization and
+        /// deserialization
+        /// </summary>
+        public static JsonSerializationSettings SerializationSettings 
+        {
+            get { return SerializationEngine.Settings; }
+            set { SerializationEngine.Settings = value; }
+        }
+
         #if __IOS__
 
         /// <summary>
@@ -86,6 +96,7 @@ namespace Couchbase.Lite
 
         static ManagerOptions()
         {
+            SerializationEngine = new NewtonsoftJsonSerializer();
             Default = new ManagerOptions();
         }
 
@@ -101,11 +112,7 @@ namespace Couchbase.Lite
         {
             MaxRetries = 2;
 
-            #if __IOS__ || __ANDROID__
             MaxOpenHttpConnections = 8;
-            #else
-            MaxOpenHttpConnections = 16;
-            #endif
 
             MaxRevsToGetInBulk = 50;
 
@@ -125,8 +132,7 @@ namespace Couchbase.Lite
             }
             #endif
 
-            ServicePointManager.DefaultConnectionLimit = MaxOpenHttpConnections * 2;
-            SerializationEngine = new NewtonsoftJsonSerializer();
+            ServicePointManager.DefaultConnectionLimit = MaxOpenHttpConnections * 3;
         }
             
         /// <summary>Gets or sets, whether changes to databases are disallowed by default.</summary>
@@ -155,5 +161,10 @@ namespace Couchbase.Lite
         /// </summary>
         /// <value>Max revs to get in bulk download</value>
         public int MaxRevsToGetInBulk { get; set; }
+
+        public override string ToString()
+        {
+            return String.Format("ManagerOptions[MaxRetries={0}, ReadOnly={1}, CallbackScheduler={2}, RequestTimeout={3}, MaxOpenHttpConnections={4}, MaxRevsToGetInBulk={5}]", MaxRetries, ReadOnly, CallbackScheduler.GetType().Name, RequestTimeout, MaxOpenHttpConnections, MaxRevsToGetInBulk);
+        }
     }
 }

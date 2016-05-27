@@ -42,25 +42,21 @@
 * and limitations under the License.
 */
 
-using System.Collections.Generic;
 using System;
-using System.Text;
-using System.Linq;
-using NUnit.Framework;
-using Couchbase.Lite;
-using Couchbase.Lite.Internal;
-using Sharpen;
-using Newtonsoft.Json.Linq;
-using Couchbase.Lite.Storage;
-using Couchbase.Lite.Util;
-using Newtonsoft.Json;
+using System.Collections.Generic;
 using System.IO;
-using Couchbase.Lite.Store;
+using System.Linq;
 using System.Net;
-using System.Threading;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Collections;
+using System.Text;
+
+using Couchbase.Lite;
+using Couchbase.Lite.Internal;
+using Couchbase.Lite.Store;
+using Couchbase.Lite.Util;
+using NUnit.Framework;
+using Couchbase.Lite.Storage.SQLCipher;
 
 namespace Couchbase.Lite
 {
@@ -94,12 +90,12 @@ namespace Couchbase.Lite
             Assert.AreEqual(1, database.Attachments.Count());
 
             // Get the revision:
-            var gotRev1 = database.GetDocument(rev1.GetDocId(), rev1.GetRevId(), true);
+            var gotRev1 = database.GetDocument(rev1.DocID, rev1.RevID, true);
             var attachmentsDict = gotRev1.GetAttachments();
             AssertDictionariesAreEqual(resultDict, attachmentsDict);
 
             // Expand it without decoding:
-            var expandedRev = gotRev1.CopyWithDocID(gotRev1.GetDocId(), gotRev1.GetRevId());
+            var expandedRev = gotRev1.Copy(gotRev1.DocID, gotRev1.RevID);
             Assert.DoesNotThrow(() => database.ExpandAttachments(expandedRev, 0, false, false));
             var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(bodyString).Compress().ToArray());
             AssertDictionariesAreEqual(new Dictionary<string, object> { { "attach", new Dictionary<string, object> {
@@ -115,7 +111,7 @@ namespace Couchbase.Lite
             }, expandedRev.GetAttachments());
 
             // Expand it and decode:
-            expandedRev = gotRev1.CopyWithDocID(gotRev1.GetDocId(), gotRev1.GetRevId());
+            expandedRev = gotRev1.Copy(gotRev1.DocID, gotRev1.RevID);
             Assert.DoesNotThrow(() => database.ExpandAttachments(expandedRev, 0, false, true));
             encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(bodyString));
             AssertDictionariesAreEqual(new Dictionary<string, object> { { "attach", new Dictionary<string, object> {
@@ -180,16 +176,16 @@ namespace Couchbase.Lite
             Assert.AreEqual(1L, rev1.GetAttachments().GetCast<IDictionary<string, object>>("attach").GetCast<long>("revpos"));
 
             props = new Dictionary<string, object> {
-                { "_id", rev1.GetDocId() },
+                { "_id", rev1.DocID },
                 { "_deleted", true }
             };
 
             var rev2 = default(RevisionInternal);
-            Assert.DoesNotThrow(() => rev2 = database.PutRevision(new RevisionInternal(props), rev1.GetRevId()));
-            Assert.IsTrue(rev2.IsDeleted());
+            Assert.DoesNotThrow(() => rev2 = database.PutRevision(new RevisionInternal(props), rev1.RevID, false));
+            Assert.IsTrue(rev2.Deleted);
 
             // Insert a revision several generations advanced but which hasn't changed the attachment:
-            var rev3 = rev1.CopyWithDocID(rev1.GetDocId(), "3-3333");
+            var rev3 = rev1.Copy(rev1.DocID, "3-3333");
             props = rev3.GetProperties();
             props["foo"] = "bar";
             rev3.SetProperties(props);
@@ -202,7 +198,7 @@ namespace Couchbase.Lite
                 return nuAtt;
             });
 
-            var history = new List<string> { rev3.GetRevId(), rev2.GetRevId(), rev1.GetRevId() };
+            var history = new List<string> { rev3.RevID, rev2.RevID, rev1.RevID };
             Assert.DoesNotThrow(() => database.ForceInsert(rev3, history, null));
         }
 
@@ -235,7 +231,7 @@ namespace Couchbase.Lite
                 // The API prevents new insertions with MD5 hashes, so we need to insert this bypassing the API
                 // to simulate a legacy document
                 var engine = store.StorageEngine;
-                var docName = "doc" + Convert.ToString(DateTime.UtcNow.ToMillisecondsSinceEpoch());
+                var docName = "doc" + Convert.ToString(DateTime.UtcNow.MillisecondsSinceEpoch());
                 var contentVals = new ContentValues();
                 contentVals["docid"] = docName;
                 engine.Insert("docs", null, contentVals);
@@ -274,9 +270,9 @@ namespace Couchbase.Lite
                 contentVals["json"] = Encoding.UTF8.GetBytes(json);
                 engine.Insert("revs", null, contentVals);
 
-                var attachmentStream = (InputStream)GetAsset("attachment.png");
+                var attachmentStream = GetAsset("attachment.png");
                 var fileStream = File.OpenWrite(Path.Combine(database.AttachmentStorePath, "92CD480700976EE63B55600EF429048C.blob"));
-                attachmentStream.Wrapped.CopyTo(fileStream);
+                attachmentStream.CopyTo(fileStream);
                 attachmentStream.Dispose();
                 fileStream.Dispose();
 
@@ -290,9 +286,9 @@ namespace Couchbase.Lite
                 Assert.AreEqual(HttpStatusCode.Created, response.StatusCode);
 
 
-                attachmentStream = (InputStream)GetAsset("attachment.png");
+                attachmentStream = GetAsset("attachment.png");
                 var baos = new MemoryStream();
-                attachmentStream.Wrapped.CopyTo(baos);
+                attachmentStream.CopyTo(baos);
                 attachmentStream.Dispose();
                 endpoint = baseEndpoint + "/attachment?rev=1-1153b140e4c8674e2e6425c94de860a0";
 
@@ -342,9 +338,9 @@ namespace Couchbase.Lite
                 response = client.SendAsync(deleteRequest).Result;
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
 
-                attachmentStream = (InputStream)GetAsset("attachment2.png");
+                attachmentStream = GetAsset("attachment2.png");
                 baos = new MemoryStream();
-                attachmentStream.Wrapped.CopyTo(baos);
+                attachmentStream.CopyTo(baos);
                 attachmentStream.Dispose();
                 endpoint = baseEndpoint + "/attachment?rev=5-4737cb66c6a7ef1b11e872cb6fa4d51a";
 
@@ -409,34 +405,34 @@ namespace Couchbase.Lite
             var attachmentDict = new Dictionary<string, object> {
                 { testAttachmentName, itemDict }
             };
-            var gotRev1 = database.GetDocument(rev1.GetDocId(), rev1.GetRevId(), true);
+            var gotRev1 = database.GetDocument(rev1.DocID, rev1.RevID, true);
             AssertDictionariesAreEqual(attachmentDict, gotRev1.GetAttachments());
 
             itemDict.Remove("stub");
             itemDict["data"] = Convert.ToBase64String(attach1);
-            gotRev1 = database.GetDocument(rev1.GetDocId(), rev1.GetRevId(), true);
-            var expandedRev = gotRev1.CopyWithDocID(rev1.GetDocId(), rev1.GetRevId());
+            gotRev1 = database.GetDocument(rev1.DocID, rev1.RevID, true);
+            var expandedRev = gotRev1.Copy(rev1.DocID, rev1.RevID);
             Assert.DoesNotThrow(() => database.ExpandAttachments(expandedRev, 0, false, true));
             AssertDictionariesAreEqual(attachmentDict, expandedRev.GetAttachments());
 
             // Add a second revision that doesn't update the attachment:
             props = new Dictionary<string, object> {
-                { "_id", rev1.GetDocId() },
+                { "_id", rev1.DocID },
                 { "foo", 2 },
                 { "bazz", false },
                 { "_attachments", CreateAttachmentsStub(testAttachmentName) }
             };
-            var rev2 = database.PutRevision(new RevisionInternal(props), rev1.GetRevId());
+            var rev2 = database.PutRevision(new RevisionInternal(props), rev1.RevID, false);
 
             // Add a third revision of the same document:
             var attach2 = Encoding.UTF8.GetBytes("<html>And this is attach2</html>");
             props = new Dictionary<string, object> {
-                { "_id", rev2.GetDocId() },
+                { "_id", rev2.DocID },
                 { "foo", 2 },
                 { "bazz", false },
                 { "_attachments", CreateAttachmentsDict(attach2, testAttachmentName, "text/html", false) }
             };
-            var rev3 = database.PutRevision(new RevisionInternal(props), rev2.GetRevId());
+            var rev3 = database.PutRevision(new RevisionInternal(props), rev2.RevID, false);
 
             // Check the second revision's attachment
             att = database.GetAttachmentForRevision(rev2, testAttachmentName);
@@ -444,7 +440,7 @@ namespace Couchbase.Lite
             Assert.AreEqual("text/plain", att.ContentType);
             Assert.AreEqual(AttachmentEncoding.None, att.Encoding);
 
-            expandedRev = rev2.CopyWithDocID(rev2.GetDocId(), rev2.GetRevId());
+            expandedRev = rev2.Copy(rev2.DocID, rev2.RevID);
             Assert.DoesNotThrow(() => database.ExpandAttachments(expandedRev, 2, false, true));
             AssertDictionariesAreEqual(new Dictionary<string, object> { { testAttachmentName, new Dictionary<string, object> { 
                         { "stub", true }, 
@@ -459,7 +455,7 @@ namespace Couchbase.Lite
             Assert.AreEqual("text/html", att.ContentType);
             Assert.AreEqual(AttachmentEncoding.None, att.Encoding);
 
-            expandedRev = rev3.CopyWithDocID(rev3.GetDocId(), rev3.GetRevId());
+            expandedRev = rev3.Copy(rev3.DocID, rev3.RevID);
             Assert.DoesNotThrow(() => database.ExpandAttachments(expandedRev, 2, false, true));
             attachmentDict = new Dictionary<string, object> { { testAttachmentName, new Dictionary<string, object> {
                         { "content_type", "text/html" },
@@ -501,7 +497,7 @@ namespace Couchbase.Lite
             Assert.AreEqual(1, database.Attachments.Count());
 
             // Get the revision:
-            var gotRev1 = database.GetDocument(rev1.GetDocId(), rev1.GetRevId(), true);
+            var gotRev1 = database.GetDocument(rev1.DocID, rev1.RevID, true);
             var attachmentDict = gotRev1.GetAttachments();
             AssertDictionariesAreEqual(resultDict, attachmentDict);
 
@@ -509,21 +505,21 @@ namespace Couchbase.Lite
             var attachv2 = Encoding.UTF8.GetBytes("Replaced body of attach");
 
             var ex = Assert.Throws<CouchbaseLiteException>(() => database.UpdateAttachment("attach", BlobForData(database, attachv2), 
-                "application/foo", AttachmentEncoding.None, rev1.GetDocId(), null));
+                "application/foo", AttachmentEncoding.None, rev1.DocID, null, null));
             Assert.AreEqual(StatusCode.Conflict, ex.Code);
 
             ex = Assert.Throws<CouchbaseLiteException>(() => database.UpdateAttachment("attach", BlobForData(database, attachv2), 
-                "application/foo", AttachmentEncoding.None, rev1.GetDocId(), "1-deadbeef"));
+                "application/foo", AttachmentEncoding.None, rev1.DocID, "1-deadbeef", null));
             Assert.AreEqual(StatusCode.Conflict, ex.Code);
 
             var rev2 = default(RevisionInternal);
             Assert.DoesNotThrow(() => rev2 = database.UpdateAttachment("attach", BlobForData(database, attachv2), 
-                "application/foo", AttachmentEncoding.None, rev1.GetDocId(), rev1.GetRevId()));
-            Assert.AreEqual(rev1.GetDocId(), rev2.GetDocId());
-            Assert.AreEqual(2, rev2.GetGeneration());
+                "application/foo", AttachmentEncoding.None, rev1.DocID, rev1.RevID, null));
+            Assert.AreEqual(rev1.DocID, rev2.DocID);
+            Assert.AreEqual(2, rev2.Generation);
 
             // Get the updated revision:
-            var gotRev2 = database.GetDocument(rev2.GetDocId(), rev2.GetRevId(), true);
+            var gotRev2 = database.GetDocument(rev2.DocID, rev2.RevID, true);
             attachmentDict = gotRev2.GetAttachments();
             AssertDictionariesAreEqual(new Dictionary<string, object> { 
                 { "attach", new Dictionary<string, object> {
@@ -542,21 +538,21 @@ namespace Couchbase.Lite
 
             // Delete the attachment:
             ex = Assert.Throws<CouchbaseLiteException>(() => database.UpdateAttachment("nosuchattach", null, 
-                null, AttachmentEncoding.None, rev2.GetDocId(), rev2.GetRevId()));
+                null, AttachmentEncoding.None, rev2.DocID, rev2.RevID, null));
             Assert.AreEqual(StatusCode.AttachmentNotFound, ex.Code);
 
             ex = Assert.Throws<CouchbaseLiteException>(() => database.UpdateAttachment("nosuchattach", null, 
-                null, AttachmentEncoding.None, "nosuchdoc", "nosuchrev"));
+                null, AttachmentEncoding.None, "nosuchdoc", "nosuchrev", null));
             Assert.AreEqual(StatusCode.NotFound, ex.Code);
 
             var rev3 = default(RevisionInternal);
             Assert.DoesNotThrow(() => rev3 = database.UpdateAttachment("attach", null, 
-                null, AttachmentEncoding.None, rev2.GetDocId(), rev2.GetRevId()));
-            Assert.AreEqual(rev2.GetDocId(), rev3.GetDocId());
-            Assert.AreEqual(3, rev3.GetGeneration());
+                null, AttachmentEncoding.None, rev2.DocID, rev2.RevID, null));
+            Assert.AreEqual(rev2.DocID, rev3.DocID);
+            Assert.AreEqual(3, rev3.Generation);
 
             // Get the updated revision:
-            var gotRev3 = database.GetDocument(rev3.GetDocId(), rev3.GetRevId(), true);
+            var gotRev3 = database.GetDocument(rev3.DocID, rev3.RevID, true);
             Assert.IsNull(gotRev3.GetPropertyForKey("_attachments"));
         }
 
@@ -577,7 +573,7 @@ namespace Couchbase.Lite
             // look it up in blob store and make sure it's there
             var blobKey = new BlobKey(sha1Base64Digest);
             var blob = attachments.BlobForKey(blobKey);
-            Assert.IsTrue(Arrays.Equals(Encoding.UTF8.GetBytes(testBlob).ToArray(), blob));
+            CollectionAssert.AreEqual(Encoding.UTF8.GetBytes(testBlob).ToArray(), blob);
         }
 
         /// <summary>https://github.com/couchbase/couchbase-lite-android/issues/134</summary>
@@ -629,8 +625,8 @@ namespace Couchbase.Lite
                 Assert.IsNotNull(inputStream);
 
                 var attachmentDataRetrieved = attachmentRetrieved.Content.ToArray();
-                var attachmentDataRetrievedString = Runtime.GetStringForBytes(attachmentDataRetrieved);
-                var attachBodyString = Sharpen.Runtime.GetStringForBytes(attachBodyBytes);
+                var attachmentDataRetrievedString = Encoding.UTF8.GetString(attachmentDataRetrieved);
+                var attachBodyString = Encoding.UTF8.GetString(attachBodyBytes);
                 Assert.AreEqual(attachBodyString, attachmentDataRetrievedString);
                 // Cleanup
                 attachmentRetrieved.Dispose();

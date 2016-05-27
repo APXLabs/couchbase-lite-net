@@ -18,7 +18,6 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 //
-#if !NOSQLITE
 using System;
 using System.Collections.Generic;
 using Couchbase.Lite.Internal;
@@ -1626,7 +1625,7 @@ namespace Couchbase.Lite.Store
         }
 
         public RevisionInternal PutRevision(string inDocId, string inPrevRevId, IDictionary<string, object> properties,
-            bool deleting, bool allowConflict, StoreValidation validationBlock)
+            bool deleting, bool allowConflict, Uri source, StoreValidation validationBlock)
         {
             IEnumerable<byte> json = null;
             if (properties != null) {
@@ -1813,7 +1812,7 @@ namespace Couchbase.Lite.Store
             });
 
             //// EPILOGUE: A change notification is sent...
-            Delegate.DatabaseStorageChanged(new DocumentChange(newRev, winningRevID, inConflict, null));
+            Delegate.DatabaseStorageChanged(new DocumentChange(newRev, winningRevID, inConflict, source));
 
             return newRev;
         }
@@ -1825,13 +1824,13 @@ namespace Couchbase.Lite.Store
             string docId = rev.GetDocId();
 
             string winningRevId = null;
-            bool inConflict = false;
+            ValueTypePtr<bool> inConflict = false;
             RunInTransaction(() =>
             {
                 // First look up the document's row-id and all locally-known revisions of it:
                 Dictionary<string, RevisionInternal> localRevs = null;
                 string oldWinningRevId = null;
-                bool oldWinnerWasDeletion = false;
+                ValueTypePtr<bool> oldWinnerWasDeletion = false;
                 bool isNewDoc = revHistory.Count == 1;
                 var docNumericId = GetOrInsertDocNumericID(docId, ref isNewDoc);
                 if(docNumericId <= 0) {
@@ -1959,7 +1958,7 @@ namespace Couchbase.Lite.Store
                     args["doc_type"] = null;
                     int changes;
                     try {
-                        changes = StorageEngine.Update("revs", args, "sequence=?", localParentSequence.ToString());
+                        changes = StorageEngine.Update("revs", args, "sequence=? AND current != 0", localParentSequence.ToString());
                     } catch(CouchbaseLiteException) {
                         Log.W(TAG, "Failed to update {0}", docId);
                         throw;
@@ -2205,4 +2204,3 @@ namespace Couchbase.Lite.Store
         #endregion
     }
 }
-#endif

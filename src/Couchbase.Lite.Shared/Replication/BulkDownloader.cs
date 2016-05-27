@@ -32,29 +32,28 @@
 // License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
 // either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
-//using System;
+
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
+
 using Couchbase.Lite;
+using Couchbase.Lite.Auth;
 using Couchbase.Lite.Internal;
-using Couchbase.Lite.Replicator;
 using Couchbase.Lite.Support;
 using Couchbase.Lite.Util;
-using Sharpen;
-using System.Threading;
-using System.Net.Http.Headers;
-using Couchbase.Lite.Auth;
 
 namespace Couchbase.Lite.Replicator
 {
-    internal class BulkDownloader : IMultipartReaderDelegate
+    internal class BulkDownloader : IMultipartReaderDelegate, IDisposable
     {
-        const string Tag = "BulkDownloader";
+        private static readonly string Tag = typeof(BulkDownloader).Name;
 
         private Uri _bulkGetUri;
         private IDictionary<string, object> _requestHeaders;
@@ -62,8 +61,7 @@ namespace Couchbase.Lite.Replicator
         private CancellationTokenSource _tokenSource;
         private MultipartDocumentReader _docReader;
         private Database _db;
-        private IList<RevisionInternal> _revs;
-        private readonly IHttpClientFactory _clientFactory;
+        private readonly CouchbaseLiteHttpClient _httpClient;
         private readonly object _body;
 
         private int _docCount;
@@ -87,40 +85,23 @@ namespace Couchbase.Lite.Replicator
         internal IAuthenticator Authenticator { get; set; }
 
         /// <exception cref="System.Exception"></exception>
-        public BulkDownloader(TaskFactory workExecutor, IHttpClientFactory clientFactory, Uri dbURL, IList<RevisionInternal> revs, Database database, IDictionary<string, object> requestHeaders, CancellationTokenSource tokenSource = null)
+        public BulkDownloader(IHttpClientFactory clientFactory, Uri dbURL, IList<RevisionInternal> revs, Database database, IDictionary<string, object> requestHeaders, CancellationTokenSource tokenSource = null)
         {
             _bulkGetUri = new Uri(AppendRelativeURLString(dbURL, "/_bulk_get?revs=true&attachments=true"));
-            _revs = revs;
             _db = database;
-            _clientFactory = clientFactory;
-            _requestHeaders = requestHeaders;
+            _httpClient = clientFactory.GetHttpClient(CookieStore, true);
+            _requestHeaders = requestHeaders ?? new Dictionary<string, object>();
             _tokenSource = tokenSource ?? new CancellationTokenSource();
             _body = CreatePostBody(revs, _db);
         }
 
         public void Start()
         {
-            HttpClient httpClient = null;
+            CouchbaseLiteHttpClient httpClient = null;
             var requestMessage = CreateConcreteRequest();
 
-            httpClient = _clientFactory.GetHttpClient(CookieStore, true);
-            var challengeResponseAuth = Authenticator as IChallengeResponseAuthenticator;
-            if (challengeResponseAuth != null) {
-                var authHandler = _clientFactory.Handler as DefaultAuthHandler;
-                if (authHandler != null) {
-                    authHandler.Authenticator = challengeResponseAuth;
-                }
-
-                challengeResponseAuth.PrepareWithRequest(requestMessage);
-            }
-
-            var authHeader = AuthUtils.GetAuthenticationHeaderValue(Authenticator, requestMessage.RequestUri);
-            if (authHeader != null) {
-                httpClient.DefaultRequestHeaders.Authorization = authHeader;
-            }
-
             if(!requestMessage.Headers.Contains("User-Agent")) {
-                requestMessage.Headers.TryAddWithoutValidation("User-Agent", String.Format("CouchbaseLite/{0} ({1})", Replication.SYNC_PROTOCOL_VERSION, Manager.VersionString));
+                requestMessage.Headers.TryAddWithoutValidation("User-Agent", String.Format("CouchbaseLite/{0} ({1})", Replication.SyncProtocolVersion, Manager.VersionString));
             }
 
             requestMessage.Headers.Add("Accept", "multipart/related, application/json");           
@@ -131,7 +112,7 @@ namespace Couchbase.Lite.Replicator
 
             SetBody(requestMessage);
 
-            ExecuteRequest(httpClient, requestMessage).ContinueWith(t => 
+            ExecuteRequest(_httpClient, requestMessage).ContinueWith(t => 
             {
                 Log.V(Tag, "RemoteRequest run() finished, url: {0}", _bulkGetUri);
                 if(httpClient != null) {
@@ -173,7 +154,7 @@ namespace Couchbase.Lite.Replicator
             return newRequest;
         }
 
-        private Task ExecuteRequest(HttpClient httpClient, HttpRequestMessage request)
+        private Task ExecuteRequest(CouchbaseLiteHttpClient httpClient, HttpRequestMessage request)
         {
             object fullBody = null;
             Exception error = null;
@@ -188,8 +169,9 @@ namespace Couchbase.Lite.Replicator
             request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("gzip"));
             request.Headers.Add("X-Accept-Part-Encoding", "gzip");
 
-            Log.D(Tag + ".ExecuteRequest", "Sending request: {0}", request);
+            Log.D(Tag, ".ExecuteRequest", "Sending request: {0}", request);
             var requestTokenSource = CancellationTokenSource.CreateLinkedTokenSource(_tokenSource.Token);
+            httpClient.Authenticator = Authenticator;
             return httpClient.SendAsync(request, requestTokenSource.Token).ContinueWith(t =>
             {
                 requestTokenSource.Dispose();
@@ -205,25 +187,25 @@ namespace Couchbase.Lite.Replicator
 
                 try {
                     if (response == null) {
-                        Log.E(Tag, "Didn't get response for {0}", request);
+                        Log.To.Sync.I(Tag, "Didn't get response for {0}", request);
 
                         error = new HttpRequestException();
                         RespondWithResult(fullBody, error, response);
                     } else if (!response.IsSuccessStatusCode)  {
                         HttpStatusCode status = response.StatusCode;
 
-                        Log.E(Tag, "Got error status: {0} for {1}.  Reason: {2}", status.GetStatusCode(), request, response.ReasonPhrase);
+                        Log.To.Sync.I(Tag, "Got error status: {0} for {1}.  Reason: {2}", status.GetStatusCode(), request, response.ReasonPhrase);
                         error = new HttpResponseException(status);
 
                         RespondWithResult(fullBody, error, response);
                     } else {
-                        Log.V(Tag, "Processing response: {0}", response);
+                        Log.To.Sync.D(Tag, "Processing response: {0}", response);
                         var entity = response.Content;
                         var contentTypeHeader = entity.Headers.ContentType;
                         Stream inputStream = null;
                         if (contentTypeHeader != null && contentTypeHeader.ToString().Contains("multipart/"))
                         {
-                            Log.V(Tag, "contentTypeHeader = {0}", contentTypeHeader.ToString());
+                            Log.To.Sync.D(Tag, "contentTypeHeader = {0}", contentTypeHeader.ToString());
                             try {
                                 _topReader = new MultipartReader(contentTypeHeader.ToString(), this);
                                 inputStream = entity.ReadAsStreamAsync().Result;
@@ -277,12 +259,11 @@ namespace Couchbase.Lite.Replicator
         ///     </remarks>
         public void StartedPart(IDictionary<string, string> headers)
         {
-            if (_docReader != null)
-            {
+            if (_docReader != null) {
                 throw new InvalidOperationException("_docReader is already defined");
             }
-            Log.V(Tag, "{0}: Starting new document; headers ={1}", this, headers);
-            Log.V(Tag, "{0}: Starting new document; ID={1}".Fmt(this, headers.Get("X-Doc-Id")));
+
+            Log.To.Sync.V(Tag, "{0}: Starting new document; ID={1}", this, headers.Get("X-Doc-ID"));
             _docReader = new MultipartDocumentReader(_db);
             _docReader.SetContentType(headers.Get ("Content-Type"));
             _docReader.StartedPart(headers);
@@ -303,11 +284,11 @@ namespace Couchbase.Lite.Replicator
         /// <remarks>This method is called when a part is complete.</remarks>
         public virtual void FinishedPart()
         {
-            Log.V(Tag, "{0}: Finished document".Fmt(this));
-            if (_docReader == null)
-            {
+            Log.To.Sync.V(Tag, "{0} Finished document", this);
+            if (_docReader == null) {
                 throw new InvalidOperationException("_docReader is not defined");
             }
+
             _docReader.Finish();
             ++_docCount;
             OnDocumentDownloaded(_docReader.GetDocumentProperties());
@@ -323,7 +304,7 @@ namespace Couchbase.Lite.Replicator
 
         private void RespondWithResult(object result, Exception error, HttpResponseMessage response)
         {
-            Log.D(Tag + ".RespondWithREsult", "Firing Completed event.");
+            Log.To.Sync.V(Tag, "{0} finished loading ({1} documents)", this, _docCount);
             OnEvent(_complete, result, error);
             if (response != null) {
                 response.Dispose();
@@ -350,9 +331,9 @@ namespace Couchbase.Lite.Replicator
 
 
                 var mapped = new Dictionary<string, object> ();
-                mapped.Put ("id", source.GetDocId ());
-                mapped.Put ("rev", source.GetRevId ());
-                mapped.Put ("atts_since", attsSince);
+                mapped["id"] = source.DocID;
+                mapped["rev"] = source.RevID;
+                mapped["atts_since"] = attsSince;
 
                 return mapped;
             };
@@ -369,7 +350,7 @@ namespace Couchbase.Lite.Replicator
             }       
             
             var retval = new Dictionary<string, object>();
-            retval.Put("docs", keys);
+            retval["docs"] = keys;
             return retval;
         }
 
@@ -377,6 +358,16 @@ namespace Couchbase.Lite.Replicator
         {
             var uri = remote.AppendPath(relativePath);
             return uri.AbsoluteUri;
+        }
+
+        public override string ToString()
+        {
+            return String.Format("BulkDownloader ({0})", new SecureLogUri(_bulkGetUri));
+        }
+
+        public void Dispose()
+        {
+            _httpClient.Dispose();
         }
     }
 }

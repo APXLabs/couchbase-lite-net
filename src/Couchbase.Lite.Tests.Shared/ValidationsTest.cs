@@ -43,11 +43,10 @@
 */
 
 using System.Collections.Generic;
-using Couchbase.Lite;
+
 using Couchbase.Lite.Internal;
 using Couchbase.Lite.Util;
 using NUnit.Framework;
-using Sharpen;
 
 namespace Couchbase.Lite
 {
@@ -97,14 +96,14 @@ namespace Couchbase.Lite
             props["head_count"] = 3;
             rev.SetProperties(props);
             validationCalled = false;
-            rev = database.PutRevision(rev, rev.GetRevId(), false);
+            rev = database.PutRevision(rev, rev.RevID, false);
             Assert.IsTrue(validationCalled);
 
             // PUT an invalid update:
-            Sharpen.Collections.Remove(props, "towel");
+            props.Remove("towel");
             rev.SetProperties(props);
             validationCalled = false;
-            Assert.Throws<CouchbaseLiteException>(() => rev = database.PutRevision(rev, rev.GetRevId(), false));
+            Assert.Throws<CouchbaseLiteException>(() => rev = database.PutRevision(rev, rev.RevID, false));
             Assert.IsTrue(validationCalled);
 
             // POST an invalid new document:
@@ -125,13 +124,13 @@ namespace Couchbase.Lite
             validationCalled = false;
             rev = database.PutRevision(rev, null, false);
             Assert.IsTrue(validationCalled);
-            Assert.AreEqual("ford", rev.GetDocId());
+            Assert.AreEqual("ford", rev.DocID);
 
             // DELETE a document:
-            rev = new RevisionInternal(rev.GetDocId(), rev.GetRevId(), true);
-            Assert.IsTrue(rev.IsDeleted());
+            rev = new RevisionInternal(rev.DocID, rev.RevID, true);
+            Assert.IsTrue(rev.Deleted);
             validationCalled = false;
-            rev = database.PutRevision(rev, rev.GetRevId(), false);
+            rev = database.PutRevision(rev, rev.RevID, false);
             Assert.IsTrue(validationCalled);
 
             // PUT an invalid new document:

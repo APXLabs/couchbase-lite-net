@@ -51,14 +51,12 @@ using System.Threading.Tasks;
 
 using Couchbase.Lite.Auth;
 using Couchbase.Lite.Db;
+using Couchbase.Lite.Internal;
 using Couchbase.Lite.Replicator;
+using Couchbase.Lite.Store;
 using Couchbase.Lite.Support;
 using Couchbase.Lite.Util;
 using ICSharpCode.SharpZipLib.Zip;
-using Sharpen;
-using Couchbase.Lite.Internal;
-using System.Diagnostics;
-using Couchbase.Lite.Store;
 
 #if !NET_3_5
 using StringEx = System.String;
@@ -92,6 +90,9 @@ namespace Couchbase.Lite
 
         // FIXME: Not all of these are valid Windows file chars.
         private const string IllegalCharacters = @"(^[^a-z]+)|[^a-z0-9_\$\(\)/\+\-]+";
+        private static readonly HashSet<string> AllKnownPrefixes = new HashSet<string> {
+            DatabaseSuffixv0, DatabaseSuffixv1, DatabaseSuffix
+        };
 
     #endregion
 
@@ -109,7 +110,12 @@ namespace Couchbase.Lite
         // FIXME: SharedInstance lifecycle is undefined, so returning default manager for now.
         public static Manager SharedInstance { 
             get { 
-                return sharedManager ?? (sharedManager = new Manager(defaultDirectory, ManagerOptions.Default)); 
+                if (sharedManager == null) {
+                    sharedManager = new Manager(defaultDirectory, ManagerOptions.Default);
+                    Log.To.Database.I(TAG, "{0} is the SharedInstance", sharedManager);
+                }
+
+                return sharedManager;
             }
             set { 
                 sharedManager = value;
@@ -247,11 +253,10 @@ namespace Couchbase.Lite
             var scheduler = options.CallbackScheduler;
             CapturedContext = new TaskFactory(scheduler);
             workExecutor = new TaskFactory(new SingleTaskThreadpoolScheduler());
-            Log.D(TAG, "New Manager uses a scheduler with a max concurrency level of {0}".Fmt(workExecutor.Scheduler.MaximumConcurrencyLevel));
-
             _networkReachabilityManager = new NetworkReachabilityManager();
             _networkReachabilityManager.StartListening();
             StorageType = "SQLite";
+            Log.To.Database.I(TAG, "Created {0}", this);
         }
 
     #endregion
@@ -266,7 +271,8 @@ namespace Couchbase.Lite
 
         /// <summary>
         /// Default storage type for newly created databases.
-        /// There are two options, "SQLite" (the default) or "ForestDB".
+        /// There are two options, StorageEngineTypes.SQLite (the default) or 
+        /// StorageEngineTypes.ForestDB.
         /// </summary>
         public string StorageType { get; set; }
 
@@ -307,6 +313,11 @@ namespace Couchbase.Lite
         /// </summary>
         public void Close() 
         {
+            if (this == SharedInstance) {
+                throw new InvalidOperationException("Please don't call Close() on the SharedInstance");
+            }
+
+            Log.To.Database.I(TAG, "CLOSING {0}", this);
             _networkReachabilityManager.StopListening();
             foreach (var database in databases.Values.ToArray()) {
                 var replicators = database.AllReplications;
@@ -321,7 +332,7 @@ namespace Couchbase.Lite
             }
 
             databases.Clear();
-            Log.D(TAG, "Manager is Closed");
+            Log.To.Database.I(TAG, "CLOSED {0}", this);
         }
 
         /// <summary>
@@ -421,7 +432,7 @@ namespace Couchbase.Lite
                 var db = GetDatabase(name, true);
                 var attachmentsPath = db.AttachmentStorePath;
                 if(attachmentStreams != null) {
-                    StreamUtils.CopyStreamsToFolder(attachmentStreams, new FilePath(attachmentsPath));
+                    StreamUtils.CopyStreamsToFolder(attachmentStreams, attachmentsPath);
                 }
             } catch (Exception e) {
                 Log.E(Database.TAG, string.Empty, e);
@@ -537,7 +548,7 @@ namespace Couchbase.Lite
         }
 
         // Instance Fields
-        private readonly ManagerOptions _options;
+        internal readonly ManagerOptions _options;
         private readonly DirectoryInfo directoryFile;
         private readonly IDictionary<String, Database> databases;
         private readonly List<Replication> replications;
@@ -571,7 +582,7 @@ namespace Couchbase.Lite
                 }
 
                 db.Name = name;
-                databases.Put(name, db);
+                databases[name] = db;
                 Shared.OpenedDatabase(db);
             }
 
@@ -607,7 +618,7 @@ namespace Couchbase.Lite
 
         private bool ContainsExtension(string name)
         {
-            return DatabaseUpgraderFactory.ALL_KNOWN_PREFIXES.Any(x => name.Contains(x));
+            return AllKnownPrefixes.Any(name.Contains);
         }
 
         private Tuple<string, string> GetDbNameAndExtFromZip(Stream compressedStream) {
@@ -644,7 +655,6 @@ namespace Couchbase.Lite
 
         private bool UpgradeDatabase(FileInfo path)
         {
-            #if !NOSQLITE
             var previousStorageType = StorageType;
             try {
                 StorageType = "SQLite";
@@ -666,7 +676,7 @@ namespace Couchbase.Lite
                 }
                 db.Dispose();
 
-                var upgrader = DatabaseUpgraderFactory.CreateUpgrader(db, oldFilename);
+                var upgrader = Database.CreateUpgrader(db, oldFilename);
                 try {
                     upgrader.Import();
                 } catch(CouchbaseLiteException e) {
@@ -680,11 +690,10 @@ namespace Couchbase.Lite
             } finally {
                 StorageType = previousStorageType;
             }
-            #endif
         }
 
 
-
+        // This is used by the listener
         internal Replication ReplicationWithProperties(IDictionary<string, object> properties)
         {
             // Extract the parameters from the JSON request body:
@@ -869,35 +878,6 @@ namespace Couchbase.Lite
             return new Dictionary<string, object>();
         }
 
-
-        internal Replication ReplicationWithDatabase (Database database, Uri url, bool push, bool create, bool start)
-        {
-            foreach (var replication in replications)
-            {
-                if (replication.LocalDatabase == database 
-                    && replication.RemoteUrl.Equals(url) 
-                    && replication.IsPull == !push)
-                {
-                    return replication;
-                }
-            }
-            if (!create)
-            {
-                return null;
-            }
-
-            var replicator = push 
-                ? (Replication)new Pusher (database, url, true, new TaskFactory(new SingleTaskThreadpoolScheduler()))
-                : (Replication)new Puller (database, url, true, new TaskFactory(new SingleTaskThreadpoolScheduler()));
-
-            replications.Add(replicator);
-            if (start)
-            {
-                replicator.Start();
-            }
-            return replicator;
-        }
-
         private string PathForName(string name)
         {
             if (String.IsNullOrEmpty(name) || illegalCharactersPattern.IsMatch(name)) {
@@ -919,55 +899,19 @@ namespace Couchbase.Lite
         }
 
         // Concurrency Management
-        internal Task<QueryEnumerator> RunAsync(Func<QueryEnumerator> action) 
-        {
-            return RunAsync(action, CancellationToken.None);
-        }
 
-        internal Task<Boolean> RunAsync(String databaseName, Func<Database, Boolean> action) 
-        {
-            var db = OpenDatabase(databaseName, new DatabaseOptions { Create = true });
-            return RunAsync<Boolean>(() => action (db));
-        }
-
-        internal Task<QueryEnumerator> RunAsync(Func<QueryEnumerator> action, CancellationToken token) 
+        internal Task<T> RunAsync<T>(Func<T> action, CancellationToken token) 
         {
             var task = token == CancellationToken.None 
-                   ? workExecutor.StartNew<QueryEnumerator>(action) 
-                    : workExecutor.StartNew<QueryEnumerator>(action, token);
+                   ? workExecutor.StartNew<T>(action) 
+                    : workExecutor.StartNew<T>(action, token);
 
             return task;
         }
 
         internal Task RunAsync(RunAsyncDelegate action, Database database)
         {
-            return RunAsync(()=>{ action(database); });
-        }
-
-        internal Task RunAsync(Action action)
-        {
-            var task = workExecutor.StartNew(action);
-            return task;
-        }
-
-        internal Task RunAsync(Action action, CancellationToken token)
-        {
-            var task = token == CancellationToken.None ?
-                workExecutor.StartNew(action) :
-                    workExecutor.StartNew(action, token);
-            return task;
-        }
-
-        internal Task<T> RunAsync<T>(Func<T> action)
-        {
-            return workExecutor.StartNew(action);
-        }
-
-        internal Task<T> RunAsync<T>(Func<T> action, CancellationToken token)
-        {
-            var task = token == CancellationToken.None 
-                ? workExecutor.StartNew(action) 
-                  : workExecutor.StartNew(action, token);
+            var task = workExecutor.StartNew(()=>{ action(database); });
             return task;
         }
 
@@ -989,7 +933,7 @@ namespace Couchbase.Lite
 
         public override string ToString()
         {
-            return String.Format("[Manager] {0}", Directory);
+            return String.Format("Manager[Dir={0} Options={1}]", Directory, _options);
         }
 
         #pragma warning restore 1591

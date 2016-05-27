@@ -42,12 +42,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
-using System.Text;
+
 using Couchbase.Lite.Internal;
+using Couchbase.Lite.Revisions;
 using Couchbase.Lite.Util;
-using Sharpen;
 
 #if !NET_3_5
 using StringEx = System.String;
@@ -442,7 +443,7 @@ namespace Couchbase.Lite {
 
         private bool RevIdGreaterThanCurrent(string revId)
         {
-            return (RevisionInternal.CBLCompareRevIDs(revId, currentRevision.Id) > 0);
+            return (RevisionID.CBLCompareRevIDs(revId, currentRevision.Id) > 0);
         }
             
         /// <exception cref="Couchbase.Lite.CouchbaseLiteException"></exception>       
@@ -465,7 +466,7 @@ namespace Couchbase.Lite {
                 propsCopy["_attachments"] = updatedAttachments;
             }
                 
-            var newRev = Database.PutDocument(Id, propsCopy, prevID, allowConflict);
+            var newRev = Database.PutDocument(Id, propsCopy, prevID, allowConflict, null);
             return GetRevisionFromRev(newRev);
         }
 
@@ -486,7 +487,7 @@ namespace Couchbase.Lite {
             foreach (RevisionInternal rev in revs)
             {
                 // add it to result, unless we are not supposed to include deleted and it's deleted
-                if (!includeDeleted && rev.IsDeleted())
+                if (!includeDeleted && rev.Deleted)
                 {
                     // don't add it
                 }
@@ -495,7 +496,7 @@ namespace Couchbase.Lite {
                     result.Add(GetRevisionFromRev(rev));
                 }
             }
-            return Sharpen.Collections.UnmodifiableList(result);
+            return new ReadOnlyCollection<SavedRevision>(result);
         }
 
         internal SavedRevision GetRevisionFromRev(RevisionInternal internalRevision)
@@ -504,7 +505,7 @@ namespace Couchbase.Lite {
                 return null;
             }
 
-            if (currentRevision != null && internalRevision.GetRevId().Equals(CurrentRevision.Id)) {
+            if (currentRevision != null && internalRevision.RevID.Equals(CurrentRevision.Id)) {
                 return currentRevision;
             }
             else {
@@ -523,9 +524,9 @@ namespace Couchbase.Lite {
             if (currentRevision != null && !revId.Equals(currentRevision.Id))
             {
                 var rev = documentChange.WinningRevisionIfKnown;
-                if (rev == null || rev.IsDeleted()) {
+                if (rev == null || rev.Deleted) {
                     currentRevision = null;
-                } else if (!rev.IsDeleted()) {
+                } else if (!rev.Deleted) {
                     currentRevision = new SavedRevision(this, rev);
                 }
             }

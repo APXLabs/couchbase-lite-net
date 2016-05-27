@@ -49,7 +49,6 @@ using System.Security.Cryptography.X509Certificates;
 
 using Couchbase.Lite.Auth;
 using Couchbase.Lite.Replicator;
-using Couchbase.Lite.Security;
 using Couchbase.Lite.Support;
 using Couchbase.Lite.Util;
 using System.Net.Http.Headers;
@@ -145,16 +144,16 @@ namespace Couchbase.Lite.Support
                 handler.AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate;
             }
 
-            Handler = new DefaultAuthHandler (handler, store);
+            var authHandler = new DefaultAuthHandler (handler, store);
             if (!useRetryHandler) {
-                return handler;
+                return authHandler;
             }
 
-            var retryHandler = new TransientErrorRetryHandler(Handler);
+            var retryHandler = new TransientErrorRetryHandler(authHandler);
             return retryHandler;
         }
 
-        public HttpClient GetHttpClient(CookieStore cookieStore, bool useRetryHandler)
+        public CouchbaseLiteHttpClient GetHttpClient(CookieStore cookieStore, bool useRetryHandler)
         {
             var authHandler = BuildHandlerPipeline(cookieStore, useRetryHandler);
 
@@ -166,19 +165,26 @@ namespace Couchbase.Lite.Support
                 Timeout = ManagerOptions.Default.RequestTimeout
             };
 
-            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", String.Format("CouchbaseLite/{0} ({1})", Replication.SYNC_PROTOCOL_VERSION, Manager.VersionString));
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", String.Format("CouchbaseLite/{0} ({1})", Replication.SyncProtocolVersion, Manager.VersionString));
+            client.DefaultRequestHeaders.Connection.Add("keep-alive");
 
             foreach(var header in Headers)
             {
                 var success = client.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value);
                 if (!success)
-                    Log.W(Tag, "Unabled to add header to request: {0}: {1}".Fmt(header.Key, header.Value));
+                    Log.W(Tag, String.Format("Unabled to add header to request: {0}: {1}", header.Key, header.Value));
             }
 
-            return client;
-        }
+            var transientHandler = authHandler as TransientErrorRetryHandler;
+            var defaultAuthHandler = default(DefaultAuthHandler);
+            if (transientHandler != null) {
+                defaultAuthHandler = transientHandler.InnerHandler as DefaultAuthHandler;
+            } else {
+                defaultAuthHandler = authHandler as DefaultAuthHandler;
+            }
 
-        public MessageProcessingHandler Handler { get; private set; }
+            return new CouchbaseLiteHttpClient(client, defaultAuthHandler);
+        }
 
         public IDictionary<string, string> Headers { get; set; }
        

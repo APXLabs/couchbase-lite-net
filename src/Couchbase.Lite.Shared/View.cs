@@ -41,15 +41,13 @@
 //
 
 using System;
-using System.Collections.Generic;
-
-using Couchbase.Lite.Util;
-using Couchbase.Lite.Store;
-using Sharpen;
-using System.Threading;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
+
 using Couchbase.Lite.Internal;
+using Couchbase.Lite.Store;
+using Couchbase.Lite.Util;
 
 namespace Couchbase.Lite {
 
@@ -340,48 +338,12 @@ namespace Couchbase.Lite {
             }
 
             if (iterator != null) {
-                Log.D(TAG, "Query {0}: Returning iterator", Name);
+                Log.To.Query.I(TAG, "Query {0}: Returning iterator", Name);
             } else {
-                Log.D(TAG, "Query {0}: Failed", Name);
+                Log.To.Query.I(TAG, "Query {0}: Failed", Name);
             }
 
             return iterator;
-        }
-
-        /// <summary>Indexing</summary>
-        internal string ToJSONString(object obj)
-        {
-            if (obj == null)
-                return null;
-
-            string result = null;
-            try
-            {
-                result = Manager.GetObjectMapper().WriteValueAsString(obj);
-            }
-            catch (Exception e)
-            {
-                Log.W(Database.TAG, "Exception serializing object to json: " + obj, e);
-            }
-            return result;
-        }
-
-        internal object FromJSON(IEnumerable<byte> json)
-        {
-            if (json == null)
-            {
-                return null;
-            }
-            object result = null;
-            try
-            {
-                result = Manager.GetObjectMapper().ReadValue<object>(json);
-            }
-            catch (Exception e)
-            {
-                Log.W(Database.TAG, "Exception parsing json", e);
-            }
-            return result;
         }
 
         internal Status CompileFromDesignDoc()

@@ -26,8 +26,8 @@ using System.Linq;
 
 using Couchbase.Lite.Internal;
 using Couchbase.Lite.Replicator;
+using Couchbase.Lite.Revisions;
 using Couchbase.Lite.Util;
-using Sharpen;
 
 namespace Couchbase.Lite.Listener
 {
@@ -70,6 +70,7 @@ namespace Couchbase.Lite.Listener
                 var response = context.CreateResponse();
                 response.JsonBody = new Body(new Dictionary<string, object> {
                     { "db_name", db.Name },
+                    { "db_uuid", db.PublicUUID() },
                     { "doc_count", numDocs },
                     { "update_seq", updateSequence },
                     { "committed_update_seq", updateSequence },
@@ -224,6 +225,8 @@ namespace Couchbase.Lite.Listener
                 StatusCode status = StatusCode.Ok;
                 bool success = db.RunInTransaction(() => {
                     List<IDictionary<string, object>> results = new List<IDictionary<string, object>>(docs.Count);
+                    var castContext = context as ICouchbaseListenerContext2;
+                    var source = castContext != null && !castContext.IsLoopbackRequest ? castContext.Sender : null;
                     foreach(var doc in docs) {
                         string docId = doc.GetCast<string>("_id");
                         RevisionInternal rev = null;
@@ -236,7 +239,7 @@ namespace Couchbase.Lite.Listener
                                 rev = new RevisionInternal(body);
                                 var history = Database.ParseCouchDBRevisionHistory(doc);
                                 try {
-                                    db.ForceInsert(rev, history, null);
+                                    db.ForceInsert(rev, history, source);
                                 } catch(CouchbaseLiteException e) {
                                     status = e.Code;
                                 }
@@ -247,12 +250,12 @@ namespace Couchbase.Lite.Listener
 
                         IDictionary<string, object> result = null;
                         if((int)status < 300) {
-                            Debug.Assert(rev != null && rev.GetRevId() != null);
+                            Debug.Assert(rev != null && rev.RevID != null);
                             if(newEdits) {
                                 result = new Dictionary<string, object>
                                 {
-                                    { "id", rev.GetDocId() },
-                                    { "rev", rev.GetRevId() },
+                                    { "id", rev.DocID },
+                                    { "rev", rev.RevID },
                                     { "status", (int)status }
                                 };
                             }
@@ -539,7 +542,7 @@ namespace Couchbase.Lite.Listener
             }
 
             if (changes.Count > 0) {
-                since = changes.Last().GetSequence();
+                since = changes.Last().Sequence;
             }
 
             return new Dictionary<string, object> {
@@ -560,20 +563,20 @@ namespace Couchbase.Lite.Listener
                 var status = new Status();
                 var rev2 = DocumentMethods.ApplyOptions(responseState.ContentOptions, rev, responseState.Context, responseState.Db, status);
                 if (rev2 != null) {
-                    rev2.SetSequence(rev.GetSequence());
+                    rev2.Sequence = rev.Sequence;
                     rev = rev2;
                 }
             }
             return new NonNullDictionary<string, object> {
-                { "seq", rev.GetSequence() },
-                { "id", rev.GetDocId() },
+                { "seq", rev.Sequence },
+                { "id", rev.DocID },
                 { "changes", new List<object> { 
                         new Dictionary<string, object> { 
-                            { "rev", rev.GetRevId() } 
+                            { "rev", rev.RevID } 
                         } 
                     } 
                 },
-                { "deleted", rev.IsDeleted() ? (object)true : null },
+                { "deleted", rev.Deleted ? (object)true : null },
                 { "doc", responseState.ChangesIncludeDocs ? rev.GetProperties() : null }
             };
         }
@@ -652,7 +655,7 @@ namespace Couchbase.Lite.Listener
                 // Return the missing revs in a somewhat different format:
                 IDictionary<string, object> diffs = new Dictionary<string, object>();
                 foreach(var rev in revs) {
-                    var docId = rev.GetDocId();
+                    var docId = rev.DocID;
                     IList<string> missingRevs = null;
                     if(!diffs.ContainsKey(docId)) {
                         missingRevs = new List<string>();
@@ -661,7 +664,7 @@ namespace Couchbase.Lite.Listener
                         missingRevs = ((Dictionary<string, IList<string>>)diffs[docId])["missing"];
                     }
 
-                    missingRevs.Add(rev.GetRevId());
+                    missingRevs.Add(rev.RevID);
                 }
 
                 // Add the possible ancestors for each missing revision:
@@ -670,7 +673,7 @@ namespace Couchbase.Lite.Listener
                     int maxGen = 0;
                     string maxRevID = null;
                     foreach(var revId in docInfo["missing"]) {
-                        var parsed = RevisionInternal.ParseRevId(revId);
+                        var parsed = RevisionID.ParseRevId(revId);
                         if(parsed.Item1 > maxGen) {
                             maxGen = parsed.Item1;
                             maxRevID = revId;
@@ -722,9 +725,9 @@ namespace Couchbase.Lite.Listener
             IDictionary<string, object> lastEntry = null;
             var entries = new List<IDictionary<string, object>>();
             foreach (var rev in changes) {
-                string docId = rev.GetDocId();
+                string docId = rev.DocID;
                 if (docId.Equals(lastDocId)) {
-                    ((IList)lastEntry["changes"]).Add(new Dictionary<string, object> { { "rev", rev.GetRevId() } });
+                    ((IList)lastEntry["changes"]).Add(new Dictionary<string, object> { { "rev", rev.RevID } });
                 } else {
                     lastEntry = ChangesDictForRev(rev, state);
                     entries.Add(lastEntry);

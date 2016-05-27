@@ -41,12 +41,11 @@
 //
 
 using System;
-using System.Linq;
-using System.Collections;
 using System.Collections.Generic;
-using System.Net;
 using System.IO;
-using Sharpen;
+using System.Linq;
+using System.Net;
+
 using Couchbase.Lite.Util;
 
 namespace Couchbase.Lite
@@ -226,7 +225,7 @@ namespace Couchbase.Lite
                 {
                     if (key.StartsWith("_", StringComparison.InvariantCultureIgnoreCase))
                     {
-                        newProps.Put(key, properties.Get(key));
+                        newProps[key] = properties.Get(key);
                     }
                 }
                 // Preserve metadata properties
@@ -307,7 +306,9 @@ namespace Couchbase.Lite
         public void SetAttachment(String name, String contentType, Uri contentUrl) {
             try {
                 byte[] inputBytes = null;
-                using(var inputStream = contentUrl.OpenConnection().GetInputStream()) {
+                var request = WebRequest.Create(contentUrl);
+                var response = request.GetResponse();
+                using(var inputStream = response.GetResponseStream()) {
                     var length = inputStream.Length;
                     inputBytes = inputStream.ReadAllBytes();
                 }

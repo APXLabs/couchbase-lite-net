@@ -27,7 +27,7 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug</OutputPath>
-    <DefineConstants>DEBUG;__IOS__;TRACE;VERBOSE;FORESTDB;OFFICIAL;</DefineConstants>
+    <DefineConstants>DEBUG;__IOS__;TRACE;VERBOSE;</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <ConsolePause>false</ConsolePause>
@@ -48,7 +48,7 @@
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
-    <DefineConstants>__IOS__;FORESTDB;OFFICIAL;</DefineConstants>
+    <DefineConstants>__IOS__;</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System.Data" />
@@ -57,16 +57,16 @@
     <Reference Include="Xamarin.iOS" />
     <Reference Include="System.Core" />
     <Reference Include="System" />
-    <Reference Include="Stateless">
-      <HintPath>..\packages\Stateless.2.5.21.0\lib\portable-net40+sl50+win+wp80\Stateless.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>..\packages\Newtonsoft.Json.7.0.1\lib\portable-net40+sl5+wp80+win8+wpa81\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="ICSharpCode.SharpZipLib.Portable">
       <HintPath>..\packages\SharpZipLib.Portable.0.86.0.0003\lib\portable-net45+netcore45+wp8+win8+wpa81+MonoTouch+MonoAndroid+Xamarin.iOS10\ICSharpCode.SharpZipLib.Portable.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Security" />
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\packages\Newtonsoft.Json.8.0.2\lib\portable-net40+sl5+wp80+win8+wpa81\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="Stateless">
+      <HintPath>..\packages\Stateless.2.5.53.0\lib\portable-net40+sl50+win+wp80+MonoAndroid10+xamarinios10+MonoTouch10\Stateless.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Properties\" />
@@ -81,22 +81,23 @@
     <Compile Include="CouchBaseTableDelegate.cs" />
     <Compile Include="CouchbaseTableSource.cs" />
     <Compile Include="ReloadEventArgs.cs" />
+    <Compile Include="AOTHelper.cs" />
   </ItemGroup>
   <Import Project="$(SolutionDir)\.nuget\NuGet.targets" Condition="Exists('$(SolutionDir)\.nuget\NuGet.targets')" />
   <ItemGroup>
-    <ProjectReference Include="..\Couchbase.Lite.Shared\vendor\SQLitePCL\bld\ugly_profile78.csproj">
-      <Project>{11440D11-E458-4BB6-ADBB-7C233F952089}</Project>
-      <Name>ugly_profile78</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Couchbase.Lite.Shared\vendor\SQLitePCL\bld\portable.profile78.csproj">
-      <Project>{84547E16-A872-418D-82A6-B57ADEE290AE}</Project>
-      <Name>portable.profile78</Name>
+    <ProjectReference Include="..\StorageEngines\SQLCipher\storage.sqlcipher.ios-bait\storage.sqlcipher.ios-bait.csproj">
+      <Project>{DED32FF7-0DED-45A7-9682-4ACF03D254DB}</Project>
+      <Name>storage.sqlcipher.ios-bait</Name>
       <Private>False</Private>
     </ProjectReference>
-    <ProjectReference Include="..\Couchbase.Lite.Shared\vendor\cbforest\CSharp\cbforest-sharp.iOS-fake\cbforest-sharp.iOS-fake.csproj">
-      <Project>{1F7C1231-9F6C-4E0C-B916-F0D05EF04941}</Project>
-      <Name>cbforest-sharp.iOS-fake</Name>
+    <ProjectReference Include="..\StorageEngines\SystemSQLite\storage.systemsqlite-bait\storage.systemsqlite-bait.csproj">
+      <Project>{9F472411-E8F1-472C-93DC-4686E83A6AC9}</Project>
+      <Name>storage.systemsqlite-bait</Name>
       <Private>False</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\StorageEngines\ForestDB\storage.forestdb.ios-bait\storage.forestdb.ios-bait.csproj">
+      <Project>{BDC11824-1554-4CF8-BFD5-E3E1B9C9E41D}</Project>
+      <Name>storage.forestdb.ios-bait</Name>
     </ProjectReference>
   </ItemGroup>
 </Project>

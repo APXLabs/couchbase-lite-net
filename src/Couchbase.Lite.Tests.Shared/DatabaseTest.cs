@@ -41,17 +41,17 @@
 //
 
 using System;
-using NUnit.Framework;
 using System.Collections.Generic;
-using System.Linq;
-using Sharpen;
-using System.Threading;
-using Newtonsoft.Json.Linq;
-using Couchbase.Lite.Internal;
-using Couchbase.Lite.Util;
-using Couchbase.Lite.Store;
-using System.Threading.Tasks;
 using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Couchbase.Lite.Internal;
+using Couchbase.Lite.Store;
+using Couchbase.Lite.Util;
+using NUnit.Framework;
+using Couchbase.Lite.Storage.SQLCipher;
 
 namespace Couchbase.Lite
 {
@@ -147,8 +147,8 @@ namespace Couchbase.Lite
 
             // Close and re-open the db using SQLite storage type. Should fail if it used to be ForestDB:
             Assert.DoesNotThrow(() => replacedb.Close().Wait(15000));
-            options.StorageType = DatabaseOptions.SQLITE_STORAGE;
-            if (_storageType == DatabaseOptions.SQLITE_STORAGE) {
+            options.StorageType = StorageEngineTypes.SQLite;
+            if (_storageType == StorageEngineTypes.SQLite) {
                 Assert.DoesNotThrow(() => replacedb = manager.OpenDatabase("replacedb", options));
                 Assert.IsNotNull(replacedb);
             } else {
@@ -258,18 +258,18 @@ namespace Couchbase.Lite
         {
             const int numDocs = 50;
             var atomicInteger = 0;
-            var doneSignal = new CountDownLatch(1);
+            var doneSignal = new CountdownEvent(1);
 
             database.Changed += (sender, e) => Interlocked.Increment (ref atomicInteger);
 
             database.RunInTransaction(() =>
             {
                 CreateDocuments(database, numDocs);
-                doneSignal.CountDown();
+                doneSignal.Signal();
                 return true;
             });
 
-            var success = doneSignal.Await(TimeSpan.FromSeconds(30));
+            var success = doneSignal.Wait(TimeSpan.FromSeconds(30));
             Assert.IsTrue(success);
             Assert.AreEqual(1, atomicInteger);
         }
@@ -296,7 +296,7 @@ namespace Couchbase.Lite
         [Test]
         public void TestGetActiveReplications()
         {
-            if (!Boolean.Parse((string)Runtime.Properties["replicationTestsEnabled"]))
+            if (!Boolean.Parse((string)GetProperty("replicationTestsEnabled")))
             {
                 Assert.Inconclusive("Replication tests disabled.");
                 return;
@@ -356,106 +356,6 @@ namespace Couchbase.Lite
 
             var checkedDocument = database.GetDocument(document.Id);
             Assert.IsTrue(document == checkedDocument);
-        }
-
-        [Test]
-        public void TestStubOutAttachmentsInRevBeforeRevPos()
-        {
-            var hello = new JObject();
-            hello["revpos"] = 1;
-            hello["follows"] = true;
-
-            var goodbye = new JObject();
-            goodbye["revpos"] = 2;
-            goodbye["data"] = "squeee";
-
-            var attachments = new JObject();
-            attachments["hello"] = hello;
-            attachments["goodbye"] = goodbye;
-
-            var properties = new Dictionary<string, object>();
-            properties["_attachments"] = attachments;
-
-            IDictionary<string, object> expected = null;
-
-            var rev = new RevisionInternal(properties);
-            Database.StubOutAttachmentsInRevBeforeRevPos(rev, 3, false);
-            var checkAttachments = rev.GetProperties()["_attachments"].AsDictionary<string, object>();
-            var result = (IDictionary<string, object>)checkAttachments["hello"];
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 1;
-            expected["stub"] = true;
-            AssertPropertiesAreEqual(expected, result);
-            result = (IDictionary<string, object>)checkAttachments["goodbye"];
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 2;
-            expected["stub"] = true;
-            AssertPropertiesAreEqual(expected, result);
-
-            rev = new RevisionInternal(properties);
-            Database.StubOutAttachmentsInRevBeforeRevPos(rev, 2, false);
-            checkAttachments = rev.GetProperties()["_attachments"].AsDictionary<string, object>();
-            result = checkAttachments["hello"].AsDictionary<string, object>();
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 1;
-            expected["stub"] = true;
-            AssertPropertiesAreEqual(expected, result);
-            result = checkAttachments["goodbye"].AsDictionary<string, object>();
-            expected = goodbye.AsDictionary<string, object>();
-            AssertPropertiesAreEqual(expected, result);
-
-            rev = new RevisionInternal(properties);
-            Database.StubOutAttachmentsInRevBeforeRevPos(rev, 1, false);
-            checkAttachments = rev.GetProperties()["_attachments"].AsDictionary<string, object>();
-            result = checkAttachments["hello"].AsDictionary<string, object>();
-            expected = hello.AsDictionary<string, object>();
-            AssertPropertiesAreEqual(expected, result);
-            result = checkAttachments["goodbye"].AsDictionary<string, object>();
-            expected = goodbye.AsDictionary<string, object>();
-            AssertPropertiesAreEqual(expected, result);
-
-            //Test the follows mode
-            rev = new RevisionInternal(properties);
-            Database.StubOutAttachmentsInRevBeforeRevPos(rev, 3, true);
-            checkAttachments = rev.GetProperties()["_attachments"].AsDictionary<string, object>();
-            result = checkAttachments["hello"].AsDictionary<string, object>();
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 1;
-            expected["stub"] = true;
-            AssertPropertiesAreEqual(expected, result);
-            result = checkAttachments["goodbye"].AsDictionary<string, object>();
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 2;
-            expected["stub"] = true;
-            AssertPropertiesAreEqual(expected, result);
-
-            rev = new RevisionInternal(properties);
-            Database.StubOutAttachmentsInRevBeforeRevPos(rev, 2, true);
-            checkAttachments = rev.GetProperties()["_attachments"].AsDictionary<string, object>();
-            result = checkAttachments["hello"].AsDictionary<string, object>();
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 1;
-            expected["stub"] = true;
-            AssertPropertiesAreEqual(expected, result);
-            result = checkAttachments["goodbye"].AsDictionary<string, object>();
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 2;
-            expected["follows"] = true;
-            AssertPropertiesAreEqual(expected, result);
-
-            rev = new RevisionInternal(properties);
-            Database.StubOutAttachmentsInRevBeforeRevPos(rev, 1, true);
-            checkAttachments = rev.GetProperties()["_attachments"].AsDictionary<string, object>();
-            result = checkAttachments["hello"].AsDictionary<string, object>();
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 1;
-            expected["follows"] = true;
-            AssertPropertiesAreEqual(expected, result);
-            result = checkAttachments["goodbye"].AsDictionary<string, object>();
-            expected = new Dictionary<string, object>();
-            expected["revpos"] = 2;
-            expected["follows"] = true;
-            AssertPropertiesAreEqual(expected, result);
         }
 
         [Test]

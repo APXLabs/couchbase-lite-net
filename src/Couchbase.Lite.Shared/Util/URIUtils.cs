@@ -41,11 +41,8 @@
 //
 
 using System;
-using System.Text;
-
-using Sharpen;
-using System.Linq;
 using System.IO;
+using System.Text;
 
 namespace Couchbase.Lite.Util
 {
@@ -71,9 +68,9 @@ namespace Couchbase.Lite.Util
 
             try {
                 return Uri.UnescapeDataString(s);
-            } catch (UnsupportedEncodingException e) {
+            } catch (Exception e) {
                 // This is highly unlikely since we always use UTF-8 encoding.
-                throw new CouchbaseLiteException(e, StatusCode.Exception);
+                throw new CouchbaseLiteException(String.Format("Failed to decode string {0}", s), e);
             }
         }
             
@@ -86,7 +83,7 @@ namespace Couchbase.Lite.Util
                 throw new ArgumentNullException("key");
             }
 
-            string query = uri.GetQuery();
+            string query = uri.Query;
             if (query == null) {
                 return null;
             }
@@ -101,7 +98,7 @@ namespace Couchbase.Lite.Util
                 if (separator > end || separator == -1) {
                     separator = end;
                 }
-                if (separator - start == encodedKey.Length && query.RegionMatches(true, start, encodedKey
+                if (separator - start == encodedKey.Length && query.RegionMatches(start, encodedKey
                     , 0, encodedKey.Length)) {
                     if (separator == end) {
                         return string.Empty;
@@ -154,7 +151,7 @@ namespace Couchbase.Lite.Util
                     }
                     else {
                         // Presumably, we've already done some encoding.
-                        encoded.AppendRange(s, current, oldLength);
+                        encoded.Append(s, current, oldLength - current);
                         return encoded.ToString();
                     }
                 }
@@ -163,7 +160,7 @@ namespace Couchbase.Lite.Util
                 }
                 if (nextToEncode > current) {
                     // Append allowed characters leading up to this point.
-                    encoded.AppendRange(s, current, nextToEncode);
+                    encoded.Append(s, current, nextToEncode - current);
                 }
                 // assert nextToEncode == current
                 // Switch to "encoding" mode.
@@ -176,7 +173,7 @@ namespace Couchbase.Lite.Util
                 // Convert the substring to bytes and encode the bytes as
                 // '%'-escaped octets.
                 string toEncode = s.Substring(current, nextAllowed - current);
-                byte[] bytes = Sharpen.Runtime.GetBytesForString(toEncode, Utf8Encoding).ToArray();
+                byte[] bytes = Encoding.UTF8.GetBytes(toEncode);
                 int bytesLength = bytes.Length;
                 for (int i = 0; i < bytesLength; i++) {
                     encoded.Append('%');
@@ -203,7 +200,7 @@ namespace Couchbase.Lite.Util
                 if (c == '%') {
                     do {
                         if (i + 2 >= s.Length) {
-                            throw new ArgumentException("Incomplete % sequence at: " + i);
+                            throw new ArgumentException(String.Format("Incomplete % sequence at: {0}", i));
                         }
                         int d1 = HexToInt(s[i + 1]);
                         int d2 = HexToInt(s[i + 2]);

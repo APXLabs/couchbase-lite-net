@@ -40,11 +40,10 @@
 // and limitations under the License.
 //
 
-using System.IO;
-using Couchbase.Lite;
-using Couchbase.Lite.Util;
-using Sharpen;
 using System;
+using System.IO;
+
+using Couchbase.Lite;
 
 namespace Couchbase.Lite.Util
 {
@@ -60,12 +59,7 @@ namespace Couchbase.Lite.Util
             }
             return name;
         }
-
-        public static bool RemoveItemIfExists(string path)
-        {
-            FilePath f = new FilePath(path);
-            return f.Delete() || !f.Exists();
-        }
+           
 
         /// <exception cref="System.IO.IOException"></exception>
         public static void CopyFile(FileInfo sourceFile, FileInfo destFile)
@@ -78,17 +72,17 @@ namespace Couchbase.Lite.Util
             sourceFile.CopyTo(destFile.FullName);
         }
 
-        public static bool DeleteRecursive (FilePath attachmentsFile)
+        public static bool DeleteRecursive (string attachmentsFile)
         {
-            if(!Directory.Exists(attachmentsFile.GetAbsolutePath())) {
+            if(!Directory.Exists(attachmentsFile)) {
                 return true;
             }
 
             var success = true;
             try {
-                Directory.Delete (attachmentsFile.GetPath (), true);
+                Directory.Delete (attachmentsFile, true);
             } catch (Exception ex) {
-                Log.E(Tag, "Error deleting the '{0}' directory.".Fmt(attachmentsFile.GetAbsolutePath()), ex);
+                Log.E(Tag, String.Format("Error deleting the '{0}' directory.", attachmentsFile), ex);
                 success = false;
             }
             return success;

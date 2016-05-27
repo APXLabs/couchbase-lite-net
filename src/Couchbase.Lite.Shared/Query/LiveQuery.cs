@@ -301,7 +301,7 @@ namespace Couchbase.Lite
             _willUpdate = true;
             var updateDelay = ((_lastUpdatedAt + TimeSpan.FromSeconds(updateInterval)) - DateTime.Now).TotalSeconds;
             updateDelay = Math.Max(0, Math.Min(_updateInterval, updateDelay));
-            Log.D(TAG, "Will update after {0} sec...", updateDelay);
+            Log.To.Query.I(TAG, "{0} will update after {1} sec...", this, updateDelay);
             Task.Delay(TimeSpan.FromSeconds(updateDelay)).ContinueWith(t =>
             {
                 if(_willUpdate) {
@@ -314,30 +314,6 @@ namespace Couchbase.Lite
         {
             _lastSequence = 0;
             Update();
-        }
-
-        private void RunUpdateAfterQueryFinishes(Task updateQueryTask, CancellationTokenSource updateQueryTaskTokenSource) 
-        {
-            if (!_runningState) {
-                Log.D(TAG, "ReRunUpdateAfterQueryFinishes() fired, but running state == false. Ignoring.");
-                return; // NOTE: Assuming that we don't want to lose rows we already retrieved.
-            }
-
-            try {
-                Log.D(TAG, "Waiting for Query to finish");
-                updateQueryTask.Wait(DEFAULT_QUERY_TIMEOUT, updateQueryTaskTokenSource.Token);
-                if (_runningState && !updateQueryTaskTokenSource.IsCancellationRequested) {
-                    Log.D(TAG, "Running Update() since Query finished");
-                    Update();
-                } else {
-                    Log.D(TAG, "Update() not called because either !runningState ({0}) or cancelled ({1})", _runningState, updateQueryTaskTokenSource.IsCancellationRequested);
-                }
-            } catch (Exception e)
-            {
-                Log.E(TAG, "Got an exception waiting for Update Query Task to finish", e);
-            } finally {
-                UpdateQueryTask = null;
-            }
         }
 
         /// <summary>
@@ -388,7 +364,7 @@ namespace Couchbase.Lite
             }
 
             if (runTask.Status != TaskStatus.RanToCompletion) {
-                Log.W(String.Format("Query Updated task did not run to completion ({0})", runTask.Status), runTask.Exception);
+                Log.W(TAG, String.Format("Query Updated task did not run to completion ({0})", runTask.Status), runTask.Exception);
                 return; // NOTE: Assuming that we don't want to lose rows we already retrieved.
             }
 
@@ -405,6 +381,15 @@ namespace Couchbase.Lite
         }
 
         #endregion
+
+        #region Overrides
+
+        public override string ToString()
+        {
+            return base.ToString().Insert(1, "Live");
+        }
+
+        #endregion
     
     }
 

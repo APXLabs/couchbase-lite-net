@@ -40,15 +40,13 @@
 // and limitations under the License.
 //
 
-using Couchbase.Lite;
-using Couchbase.Lite.Internal;
-using Sharpen;
-using System.Collections.Generic;
-using System.IO;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
-using System.IO.Compression;
+
+using Couchbase.Lite;
 using Couchbase.Lite.Util;
 
 namespace Couchbase.Lite.Internal
@@ -146,7 +144,7 @@ namespace Couchbase.Lite.Internal
             }
         }
 
-        // only if already stored in db blob-store
+        // only if already stored in db blob-store (used by listener)
         public Uri ContentUrl { 
             get {
                 string path = Database.Attachments.PathForKey(_blobKey);

@@ -43,10 +43,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Couchbase.Lite;
-using Couchbase.Lite.Util;
-using Sharpen;
+
 using Couchbase.Lite.Store;
+using Couchbase.Lite.Util;
 
 namespace Couchbase.Lite
 {
@@ -79,15 +78,14 @@ namespace Couchbase.Lite
 
             _path = path;
             EncryptionKey = encryptionKey;
-            FilePath directory = new FilePath(path);
-            if (directory.Exists() && directory.IsDirectory()) {
+            if (Directory.Exists(path)) {
                 // Existing blob-store.
                 VerifyExistingStore();
             } else {
                 // New blob store; create directory:
-                directory.Mkdirs();
-                if (!directory.IsDirectory()) {
-                    throw new InvalidOperationException(string.Format("Unable to create directory for: {0}", directory));
+                Directory.CreateDirectory(path);
+                if (!Directory.Exists(path)) {
+                    throw new InvalidOperationException(string.Format("Unable to create directory for: {0}", path));
                 }
 
                 if (encryptionKey != null) {
@@ -101,7 +99,7 @@ namespace Couchbase.Lite
             MessageDigest md;
             try {
                 md = MessageDigest.GetInstance("SHA-1");
-            } catch (NoSuchAlgorithmException) {
+            } catch (NotSupportedException) {
                 Log.E(Database.TAG, "Error, SHA-1 digest is unavailable.");
                 return null;
             }
@@ -113,19 +111,19 @@ namespace Couchbase.Lite
             return result;
         }
 
-        public static BlobKey KeyForBlobFromFile(FileInfo file)
+        public static BlobKey KeyForBlobFromFile(string file)
         {
             MessageDigest md;
             try {
                 md = MessageDigest.GetInstance("SHA-1");
-            } catch (NoSuchAlgorithmException) {
+            } catch (NotSupportedException) {
                 Log.E(Database.TAG, "Error, SHA-1 digest is unavailable.");
                 return null;
             }
 
             byte[] sha1hash = new byte[40];
             try {
-                var fis = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var fis = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 byte[] buffer = new byte[65536];
                 int lenRead = fis.Read(buffer, 0, buffer.Length);
                 while (lenRead > 0)
@@ -150,14 +148,14 @@ namespace Couchbase.Lite
 
         public string PathForKey(BlobKey key)
         {
-            return _path + FilePath.separator + key + FileExtension;
+            return _path + Path.DirectorySeparatorChar + key + FileExtension;
         }
 
         public long GetSizeOfBlob(BlobKey key)
         {
             string path = PathForKey(key);
-            FilePath file = new FilePath(path);
-            return file.Length();
+            var info = new FileInfo(path);
+            return info.Exists ? info.Length : 0;
         }
 
         public bool GetKeyForFilename(BlobKey outKey, string filename)
@@ -205,15 +203,15 @@ namespace Couchbase.Lite
 
         public bool StoreBlobStream(Stream inputStream, out BlobKey outKey)
         {
-            FilePath tmp = null;
+            var tmp = default(string);
             try {
-                tmp = FilePath.CreateTempFile(TmpFilePrefix, TmpFileExtension, new FilePath(this._path));
-                FileOutputStream fos = new FileOutputStream(tmp);
+                tmp = Path.Combine(_path, Guid.NewGuid().ToString());
+                var fos = File.Open(tmp, FileMode.Create);
                 byte[] buffer = new byte[65536];
-                int lenRead = ((InputStream)inputStream).Read(buffer);
+                int lenRead = inputStream.Read(buffer, 0, buffer.Length);
                 while (lenRead > 0)  {
                     fos.Write(buffer, 0, lenRead);
-                    lenRead = ((InputStream)inputStream).Read(buffer);
+                    lenRead = inputStream.Read(buffer, 0, buffer.Length);
                 }
 
                 inputStream.Close();
@@ -226,14 +224,12 @@ namespace Couchbase.Lite
 
             outKey = KeyForBlobFromFile(tmp);
             var keyPath = PathForKey(outKey);
-            var file = new FilePath(keyPath);
-            if (file.CanRead()) {
+            if (File.Exists(keyPath)) {
                 // object with this hash already exists, we should delete tmp file and return true
-                tmp.Delete();
-            }
-            else {
+                File.Delete(tmp);
+            } else {
                 // does not exist, we should rename tmp file to this name
-                tmp.RenameTo(file);
+                File.Move(tmp, keyPath);
             }
 
             return true;
@@ -244,15 +240,14 @@ namespace Couchbase.Lite
             BlobKey newKey = KeyForBlob(data);
             outKey.Bytes = newKey.Bytes;
             string keyPath = PathForKey(outKey);
-            FilePath file = new FilePath(keyPath);
-            if (file.CanRead()) {
+            if (File.Exists(keyPath) && ((File.GetAttributes (keyPath) & FileAttributes.Offline) == 0)) {
                 return true;
             }
 
-            FileOutputStream fos = null;
+            var fos = default(FileStream);
             try {
-                fos = new FileOutputStream(file);
-                fos.Write(data);
+                fos = File.Open(keyPath, FileMode.Create);
+                fos.Write(data, 0, data.Length);
             } catch (FileNotFoundException e) {
                 Log.E(Database.TAG, "Error opening file for output", e);
                 return false;
@@ -274,16 +269,14 @@ namespace Couchbase.Lite
 
         public ICollection<BlobKey> AllKeys()
         {
-            ICollection<BlobKey> result = new HashSet<BlobKey>();
-            FilePath file = new FilePath(_path);
-            FilePath[] contents = file.ListFiles();
-            foreach (FilePath attachment in contents) {
-                if (attachment.IsDirectory()) {
+            ICollection<BlobKey> result = new HashSet<BlobKey>();;
+            foreach (var attachment in Directory.GetFileSystemEntries(_path)) {
+                if (File.GetAttributes(attachment).HasFlag(FileAttributes.Directory)) {
                     continue;
                 }
 
                 BlobKey attachmentKey = new BlobKey();
-                GetKeyForFilename(attachmentKey, attachment.GetPath());
+                GetKeyForFilename(attachmentKey, attachment);
                 result.Add(attachmentKey);
             }
 
@@ -292,18 +285,15 @@ namespace Couchbase.Lite
 
         public int Count()
         {
-            FilePath file = new FilePath(_path);
-            FilePath[] contents = file.ListFiles();
-            return contents.Length;
+            return Directory.GetFiles(_path).Length;
         }
 
         public long TotalDataSize()
         {
             long total = 0;
-            FilePath file = new FilePath(_path);
-            FilePath[] contents = file.ListFiles();
-            foreach (FilePath attachment in contents) {
-                total += attachment.Length();
+            var info = new DirectoryInfo(_path);
+            foreach (var attachment in info.GetFiles()) {
+                total += attachment.Length;
             }
 
             return total;
@@ -312,17 +302,14 @@ namespace Couchbase.Lite
         public int DeleteBlobsExceptWithKeys(ICollection<BlobKey> keysToKeep)
         {
             int numDeleted = 0;
-            FilePath file = new FilePath(_path);
-            FilePath[] contents = file.ListFiles();
-            foreach (FilePath attachment in contents) {
+            foreach (var attachment in Directory.GetFiles(_path)) {
                 BlobKey attachmentKey = new BlobKey();
-                if (GetKeyForFilename(attachmentKey, attachment.GetPath()) && !keysToKeep.Contains(attachmentKey)) {
-                    bool result = attachment.Delete();
-                    if (result) {
+                if (GetKeyForFilename(attachmentKey, attachment) && !keysToKeep.Contains(attachmentKey)) {
+                    try {
+                        File.Delete(attachment);
                         ++numDeleted;
-                    }
-                    else {
-                        Log.E(Database.TAG, "Error deleting attachment");
+                    } catch(Exception e) {
+                        Log.E(Database.TAG, "Error deleting attachment", e);
                     }
                 }
             }
@@ -339,32 +326,35 @@ namespace Couchbase.Lite
         {
             var magic = 0;
             var path = PathForKey(key);
-            var file = new FilePath(path);
-            if (file.CanRead()) {
+            if (File.Exists(path) && ((File.GetAttributes (path) & FileAttributes.Offline) == 0)) {
                 try {
-                    var raf = new FileStream (file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    var raf = new FileStream (path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                     magic = raf.ReadByte() & unchecked((0xff)) | ((raf.ReadByte() << 8) & unchecked((0xff00)));
                     raf.Close();
                 }
                 catch (Exception e) {
-                    Runtime.PrintStackTrace(e, Console.Error);
+                    Log.E(TAG, "Error in IsGZipped", e);
                 }
             }
 
             return magic == 0;
         }
 
-        public FileInfo TempDir()
+        public string TempDir()
         {
-            FilePath directory = new FilePath(_path);
-            FilePath tempDirectory = new FilePath(directory, "temp_attachments");
-            tempDirectory.Mkdirs();
-            if (!tempDirectory.IsDirectory()) {
-                throw new InvalidOperationException(string.Format("Unable to create directory for: {0}"
-                    , tempDirectory));
+            var path = Path.Combine(_path, "temp_attachments");
+            try {
+                Directory.CreateDirectory(path);
+            } catch(Exception e) {
+                throw new CouchbaseLiteException(String.Format("Unable to create directory for: {0}", path), e);
             }
 
-            return tempDirectory;
+            if (!Directory.Exists(path)) {
+                throw new CouchbaseLiteException("Unable to create directory for: {0}", path);
+            }
+
+            Log.To.Database.I(TAG, "{0} created temporary directory {1}", this, path);
+            return path;
         }
 
         public AtomicAction ActionToChangeEncryptionKey(ISymmetricKey newKey)
@@ -503,6 +493,9 @@ namespace Couchbase.Lite
             }
         }
 
-
+        public override string ToString()
+        {
+            return String.Format("[BlobStore{0}: {1}]", EncryptionKey == null ? String.Empty : " (encrypted)", _path);
+        }
     }
 }

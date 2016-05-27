@@ -42,17 +42,15 @@
 
 using System;
 using System.Collections.Generic;
-using Couchbase.Lite;
-using Sharpen;
-using Couchbase.Lite.Util;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using NUnit.Framework;
-using System.Security.Permissions;
-using System.Diagnostics;
 using System.Threading.Tasks;
+
+using Couchbase.Lite;
+using Couchbase.Lite.Util;
+using NUnit.Framework;
 
 namespace Couchbase.Lite
 {
@@ -128,13 +126,13 @@ namespace Couchbase.Lite
             Assert.IsTrue(deleteme.Exists());
 
             var dbPath = deleteme.DbDirectory;
-            Assert.IsTrue(new FilePath(dbPath).Exists());
-            Assert.IsTrue(new FilePath(deleteme.AttachmentStorePath).Exists());
+            Assert.IsTrue(Directory.Exists(dbPath));
+            Assert.IsTrue(Directory.Exists(deleteme.AttachmentStorePath));
 
             deleteme.Delete();
             Assert.IsFalse(deleteme.Exists());
-            Assert.IsFalse(new FilePath(dbPath).Exists());
-            Assert.IsFalse(new FilePath(deleteme.AttachmentStorePath).Exists());
+            Assert.IsFalse(Directory.Exists(dbPath));
+            Assert.IsFalse(Directory.Exists(deleteme.AttachmentStorePath));
 
             // delete again, even though already deleted
             deleteme.Delete();          
@@ -371,13 +369,13 @@ namespace Couchbase.Lite
         public void TestDeleteDocumentViaTombstoneRevision()
         {
             var properties = new Dictionary<string, object>();
-            properties.Put("testName", "testDeleteDocument");
+            properties["testName"] = "testDeleteDocument";
             var doc = CreateDocumentWithProperties(database, properties);
             Assert.IsTrue(!doc.Deleted);
             Assert.IsTrue(!doc.CurrentRevision.IsDeletion);
 
             var props = new Dictionary<string, object>(doc.Properties);
-            props.Put("_deleted", true);
+            props["_deleted"] = true;
             var deletedRevision = doc.PutProperties(props);
             Assert.IsTrue(doc.Deleted);
             Assert.IsTrue(deletedRevision.IsDeletion);
@@ -598,7 +596,7 @@ namespace Couchbase.Lite
 
             var latestRevision = doc.CurrentRevision;
             var propertiesUpdated = new Dictionary<string, object>();
-            propertiesUpdated.Put("propertiesUpdated", "testUpdateDocWithAttachments");
+            propertiesUpdated["propertiesUpdated"] = "testUpdateDocWithAttachments";
 
             var newUnsavedRevision = latestRevision.CreateRevision();
             newUnsavedRevision.SetUserProperties(propertiesUpdated);
@@ -897,17 +895,16 @@ namespace Couchbase.Lite
             var reduce = view.Reduce;
             var filter = db.GetFilter("phil");
             var validation = db.GetValidation("val");
-            var result = mgr.RunAsync("db", (database)=>
-                {
-                    Assert.IsNotNull(database);
-                    var serverView = database.GetExistingView("view");
-                    Assert.IsNotNull(serverView);
-                    Assert.AreEqual(database.GetFilter("phil"), filter);
-                    Assert.AreEqual(database.GetValidation("val"), validation);
-                    Assert.AreEqual(serverView.Map, map);
-                    Assert.AreEqual(serverView.Reduce, reduce);
-                    return true;
-                });
+            var result = mgr.RunAsync((database)=>
+            {
+                Assert.IsNotNull(database);
+                var serverView = database.GetExistingView("view");
+                Assert.IsNotNull(serverView);
+                Assert.AreEqual(database.GetFilter("phil"), filter);
+                Assert.AreEqual(database.GetValidation("val"), validation);
+                Assert.AreEqual(serverView.Map, map);
+                Assert.AreEqual(serverView.Reduce, reduce);
+            }, db);
             result.Wait(TimeSpan.FromSeconds(5));
             // blocks until async task has run
             db.Close();

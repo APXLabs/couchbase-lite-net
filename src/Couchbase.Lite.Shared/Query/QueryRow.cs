@@ -42,15 +42,12 @@
 
 using System;
 using System.Linq;
-using System.Collections;
 using System.Collections.Generic;
-using System.Net;
-using System.IO;
-using Sharpen;
+using System.Diagnostics;
+
 using Couchbase.Lite.Util;
 using Couchbase.Lite.Internal;
 using Couchbase.Lite.Store;
-using System.Diagnostics;
 
 namespace Couchbase.Lite 
 {
@@ -159,7 +156,7 @@ namespace Couchbase.Lite
                 // Get the doc id from either the embedded document contents, or the '_id' value key.
                 // Failing that, there's no document linking, so use the regular old SourceDocumentId
                 if (_documentRevision != null) {
-                    return _documentRevision.GetDocId();
+                    return _documentRevision.DocID;
                 }
 
                 var valueDic = Value as IDictionary<string, object>;
@@ -195,7 +192,7 @@ namespace Couchbase.Lite
                 // Get the revision id from either the embedded document contents,
                 // or the '_rev' or 'rev' value key:
                 if (_documentRevision != null) {
-                    return _documentRevision.GetRevId();
+                    return _documentRevision.RevID;
                 }
 
                 var value = Value as IDictionary<string, object>;
@@ -293,18 +290,18 @@ namespace Couchbase.Lite
         {
             var result = new Dictionary<string, object>();
             if (Value != null || SourceDocumentId != null) {
-                result.Put("key", Key);
+                result["key"] = Key;
                 if (Value != null) {
-                    result.Put("value", Value);
+                    result["value"] = Value;
                 }
-                result.Put("id", SourceDocumentId);
+                result["id"] = SourceDocumentId;
                 if (DocumentProperties != null) {
-                    result.Put("doc", DocumentProperties);
+                    result["doc"] = DocumentProperties;
                 }
             }
             else {
-                result.Put("key", Key);
-                result.Put("error", "not_found");
+                result["key"] = Key;
+                result["error"] = "not_found";
             }
 
             return result;

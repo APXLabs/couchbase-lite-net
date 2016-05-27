@@ -52,18 +52,14 @@ namespace Couchbase.Lite.Util
 
         private readonly CouchbaseTraceListener _ts;
         private readonly object _locker = new object();
-        private readonly SourceLevels _level;
 
         #endregion
 
         #region Constructors
 
-        public CustomLogger() : this(SourceLevels.Information) { }
-
-        public CustomLogger(SourceLevels logLevel)
+        public CustomLogger()
         {
-            _level = logLevel;
-            _ts = new CouchbaseTraceListener(logLevel);
+            _ts = new CouchbaseTraceListener();
             try {
                 Trace.Listeners.Add(_ts);
             } catch(NotSupportedException e) {
@@ -93,9 +89,6 @@ namespace Couchbase.Lite.Util
 
         public void V(string tag, string msg)
         {
-            if (!(_level.HasFlag(SourceLevels.Verbose)))
-                return;
-
             lock (_locker) {
                 _ts.WriteLine(SourceLevels.Verbose, msg, tag); 
             }
@@ -103,15 +96,12 @@ namespace Couchbase.Lite.Util
 
         public void V(string tag, string msg, Exception tr)
         {
-            if (!(_level.HasFlag(SourceLevels.Verbose)))
-                return;
-
             if (tr == null) {
                 V(tag, msg);
             }
 
             lock (_locker) {
-                _ts.WriteLine(SourceLevels.Verbose, "{0}:\r\n{1}".Fmt(msg, Flatten(tr).ToString()), tag); 
+                _ts.WriteLine(SourceLevels.Verbose, String.Format("{0}:\r\n{1}", msg, Flatten(tr)), tag); 
             }
         }
 
@@ -127,10 +117,6 @@ namespace Couchbase.Lite.Util
 
         public void D(string tag, string msg)
         {
-            if (!(_level.HasFlag(SourceLevels.ActivityTracing))) {
-                return;
-            }
-
             lock (_locker) {
                 _ts.WriteLine(SourceLevels.ActivityTracing, msg, tag); 
             }
@@ -138,24 +124,17 @@ namespace Couchbase.Lite.Util
 
         public void D(string tag, string msg, Exception tr)
         {
-            if (!(_level.HasFlag(SourceLevels.ActivityTracing)))
-                return;
-
             if (tr == null) {
                 D(tag, msg);
             }
 
             lock (_locker) { 
-                _ts.WriteLine(SourceLevels.ActivityTracing, "{0}:\r\n{1}".Fmt(msg, Flatten(tr).ToString()), tag); 
+                _ts.WriteLine(SourceLevels.ActivityTracing, String.Format("{0}:\r\n{1}", msg, Flatten(tr)), tag); 
             }
         }
 
         public void I(string tag, string msg)
         {
-            if (!(_level.HasFlag(SourceLevels.Information))) {
-                return;
-            }
-
             lock (_locker) {
                 _ts.WriteLine(SourceLevels.Information, msg, tag); 
             }
@@ -163,29 +142,22 @@ namespace Couchbase.Lite.Util
 
         public void I(string tag, string msg, Exception tr)
         {
-            if (!(_level.HasFlag(SourceLevels.Information)))
-                return;
-
             if (tr == null) {
                 I(tag, msg);
             }
 
             lock (_locker) {
-                _ts.WriteLine(SourceLevels.Information, "{0}:\r\n{1}".Fmt(msg, Flatten(tr).ToString()), tag); 
+                _ts.WriteLine(SourceLevels.Information, String.Format("{0}:\r\n{1}", msg, Flatten(tr)), tag); 
             }
         }
 
         public void I(string tag, string format, params object[] args)
         {
-            I(tag, string.Format(format, args));
+            I(tag, String.Format(format, args));
         }
 
         public void W(string tag, string msg)
         {
-            if (!(_level.HasFlag(SourceLevels.Warning))) {
-                return;
-            }
-
             lock (_locker) {
                 _ts.WriteLine(SourceLevels.Warning, msg, tag);
             }
@@ -193,10 +165,6 @@ namespace Couchbase.Lite.Util
 
         public void W(string tag, Exception tr)
         {
-            if (!(_level.HasFlag(SourceLevels.Warning)) || tr == null) {
-                return;
-            }
-
             lock (_locker) {
                 _ts.WriteLine(Flatten(tr).Message, tag); 
             }
@@ -204,16 +172,12 @@ namespace Couchbase.Lite.Util
 
         public void W(string tag, string msg, Exception tr)
         {
-            if (!(_level.HasFlag(SourceLevels.Warning))) {
-                return;
-            }
-
             if (tr == null) {
                 W(tag, msg);
             }
 
             lock (_locker) { 
-                _ts.WriteLine(SourceLevels.Warning, "{0}:\r\n{1}".Fmt(msg, Flatten(tr).ToString()), tag); 
+                _ts.WriteLine(SourceLevels.Warning, String.Format("{0}:\r\n{1}", msg, Flatten(tr)), tag); 
             }
         }
 
@@ -224,10 +188,6 @@ namespace Couchbase.Lite.Util
 
         public void E(string tag, string msg)
         {
-            if (!(_level.HasFlag(SourceLevels.Error))) {
-                return;
-            }
-            
             lock (_locker) { 
                 _ts.Fail(tag, msg); 
             }
@@ -235,15 +195,12 @@ namespace Couchbase.Lite.Util
 
         public void E(string tag, string msg, Exception tr)
         {
-            if (!(_level.HasFlag(SourceLevels.Error)))
-                return;
-
             if (tr == null) {
                 E(tag, msg);
             }
 
             lock (_locker) { 
-                _ts.Fail("{0}: {1}".Fmt(tag, msg), Flatten(tr).ToString()); 
+                _ts.Fail(String.Format("{0}: {1}", tag, msg), Flatten(tr).ToString()); 
             }
         }
 

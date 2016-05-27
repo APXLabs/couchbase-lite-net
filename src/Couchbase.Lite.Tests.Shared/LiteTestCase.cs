@@ -44,20 +44,16 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-
-using System.Net;
-using Couchbase.Lite;
-using Couchbase.Lite.Internal;
-using Couchbase.Lite.Util;
-using NUnit.Framework;
-using Sharpen;
-using Couchbase.Lite.Tests;
-using System.Threading.Tasks;
+using System.IO.Compression;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
-using System.Reflection;
-using System.IO.Compression;
+using System.Threading.Tasks;
+
+using Couchbase.Lite.Tests;
+using Couchbase.Lite.Util;
+using NUnit.Framework;
 
 namespace Couchbase.Lite
 {
@@ -65,6 +61,8 @@ namespace Couchbase.Lite
     public abstract class LiteTestCase
     {
         private const string TAG = "LiteTestCase";
+        private Hashtable _runtimeTestProperties = 
+            new Hashtable();
 
         public const string FacebookAppId = "127107807637855";
 
@@ -99,16 +97,26 @@ namespace Couchbase.Lite
             _storageType = storageType;
         }
 
+        protected object GetProperty(string key)
+        {
+            return _runtimeTestProperties[key];
+        }
+
+        protected void LoadProperties(Stream stream)
+        {
+            _runtimeTestProperties.Load(stream);
+        }
+
         [SetUp]
         protected virtual void SetUp()
         {
             Log.V(TAG, "SetUp");
             #if !NET_3_5
-            if (_storageType == "ForestDB") {
+            /*if (_storageType == "ForestDB") {
                 CBForest.Native.c4log_register(CBForest.C4LogLevel.Warning, (level, message) =>
                     Console.WriteLine(String.Format("[CBForest {0}]: {1}", level, (string)message))
                 );
-            }
+            }*/
             #endif
             ManagerOptions.Default.CallbackScheduler = new SingleTaskThreadpoolScheduler();
 
@@ -138,9 +146,9 @@ namespace Couchbase.Lite
 
         protected Stream GetAsset(string name)
         {
-            var assetPath = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name + ".Assets." + name;
+            var assetPath = Assembly.GetExecutingAssembly().GetName().Name + ".Assets." + name;
             Log.D(TAG, "Fetching assembly resource: " + assetPath);
-            var stream = GetType().GetResourceAsStream(assetPath);
+            var stream = GetType().Assembly.GetManifestResourceStream(assetPath);
             return stream;
         }
 
@@ -218,59 +226,55 @@ namespace Couchbase.Lite
         /// <exception cref="System.IO.IOException"></exception>
         protected void LoadCustomProperties()
         {
-            var systemProperties = Runtime.Properties;
-            InputStream mainProperties = GetAsset("test.properties");
-            if (mainProperties != null)
-            {
-                systemProperties.Load(mainProperties);
+            var mainProperties = GetAsset("test.properties");
+            if (mainProperties != null) {
+                _runtimeTestProperties.Load(mainProperties);
             }
-            try
-            {
+
+            try {
                 var localProperties = GetAsset("local-test.properties");
                 if (localProperties != null)
                 {
-                    systemProperties.Load(localProperties);
+                    _runtimeTestProperties.Load(localProperties);
                 }
-            }
-            catch (IOException)
-            {
+            } catch (IOException) {
                 Log.W(TAG, "Error trying to read from local-test.properties, does this file exist?");
             }
         }
 
         protected string GetReplicationProtocol()
         {
-            return Runtime.GetProperty("replicationProtocol");
+            return _runtimeTestProperties["replicationProtocol"] as string;
         }
 
         protected string GetReplicationServer()
         {
-            return Runtime.GetProperty("replicationServer").Trim();
+            return (_runtimeTestProperties["replicationServer"] as string).Trim();
         }
 
         protected int GetReplicationPort()
         {
-            return Convert.ToInt32(Runtime.GetProperty("replicationPort"));
+            return Convert.ToInt32(_runtimeTestProperties["replicationPort"]);
         }
 
         protected int GetReplicationAdminPort()
         {
-            return Convert.ToInt32(Runtime.GetProperty("replicationAdminPort"));
+            return Convert.ToInt32(_runtimeTestProperties["replicationAdminPort"]);
         }
 
         protected string GetReplicationAdminUser()
         {
-            return Runtime.GetProperty("replicationAdminUser");
+            return _runtimeTestProperties["replicationAdminUser"] as string;
         }
 
         protected string GetReplicationAdminPassword()
         {
-            return Runtime.GetProperty("replicationAdminPassword");
+            return _runtimeTestProperties["replicationAdminPassword"] as string;
         }
 
         protected string GetReplicationDatabase()
         {
-            return Runtime.GetProperty("replicationDatabase");
+            return _runtimeTestProperties["replicationDatabase"] as string;
         }
 
         protected Uri GetReplicationURL()
@@ -378,10 +382,10 @@ namespace Couchbase.Lite
             Manager.DefaultOptions.RestoreDefaults();
 
             #if !NET_3_5
-            if (_storageType == "ForestDB") {
+            /*if (_storageType == "ForestDB") {
                 CBForest.Native.CheckMemoryLeaks();
                 CBForest.Native.c4log_register(CBForest.C4LogLevel.Warning, null);
-            }
+            }*/
             #endif
         }
 
@@ -405,7 +409,7 @@ namespace Couchbase.Lite
             {
                 if (!key.StartsWith ("_", StringComparison.Ordinal))
                 {
-                    result.Put(key, properties[key]);
+                    result[key] = properties[key];
                 }
             }
             return result;
@@ -457,7 +461,7 @@ namespace Couchbase.Lite
         {
             IDictionary<string, object> authProperties = GetReplicationAuthParsedJson();
             IDictionary<string, object> targetProperties = new Dictionary<string, object>();
-            targetProperties.Put("url", GetReplicationURL().ToString());
+            targetProperties["url"] = GetReplicationURL().ToString();
             targetProperties["auth"] = authProperties;
             IDictionary<string, object> properties = new Dictionary<string, object>();
             properties["source"] = DefaultTestDb;
@@ -470,7 +474,7 @@ namespace Couchbase.Lite
         {
             IDictionary<string, object> authProperties = GetReplicationAuthParsedJson();
             IDictionary<string, object> sourceProperties = new Dictionary<string, object>();
-            sourceProperties.Put("url", GetReplicationURL().ToString());
+            sourceProperties["url"] = GetReplicationURL().ToString();
             sourceProperties["auth"] = authProperties;
             IDictionary<string, object> properties = new Dictionary<string, object>();
             properties["source"] = sourceProperties;
@@ -525,7 +529,7 @@ namespace Couchbase.Lite
         internal static Document CreateDocWithAttachment(Database database, string attachmentName, string content)
         {
             var properties = new Dictionary<string, object>();
-            properties.Put("foo", "bar");
+            properties["foo"] = "bar";
 
             var doc = CreateDocumentWithProperties(database, properties);
             var rev = doc.CurrentRevision;
@@ -646,7 +650,7 @@ namespace Couchbase.Lite
         public static SavedRevision CreateRevisionWithRandomProps(SavedRevision createRevFrom, bool allowConflict)
         {
             var properties = new Dictionary<string, object>();
-            properties.Put(Misc.CreateGUID(), "val");
+            properties[Misc.CreateGUID()] = "val";
 
             var unsavedRevision = createRevFrom.CreateRevision();
             unsavedRevision.SetUserProperties(properties);
@@ -675,9 +679,9 @@ namespace Couchbase.Lite
 
     internal class ReplicationErrorObserver
     {
-        private readonly CountDownLatch doneSignal;
+        private readonly CountdownEvent doneSignal;
 
-        public ReplicationErrorObserver(CountDownLatch doneSignal)
+        public ReplicationErrorObserver(CountdownEvent doneSignal)
         {
             this.doneSignal = doneSignal;
         }
@@ -685,9 +689,8 @@ namespace Couchbase.Lite
         public void Changed(ReplicationChangeEventArgs args)
         {
             var replicator = args.Source;
-            if (replicator.LastError != null)
-            {
-                doneSignal.CountDown();
+            if (replicator.LastError != null) {
+                doneSignal.Signal();
             }
         }
     }

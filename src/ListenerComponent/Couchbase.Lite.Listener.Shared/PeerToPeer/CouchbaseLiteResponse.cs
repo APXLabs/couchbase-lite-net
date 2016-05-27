@@ -23,15 +23,13 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 
 using Couchbase.Lite.Replicator;
 using Couchbase.Lite.Support;
 using Couchbase.Lite.Util;
-using Sharpen;
-using System.Net;
-
 
 namespace Couchbase.Lite.Listener
 {
@@ -72,7 +70,7 @@ namespace Couchbase.Lite.Listener
             get { return _responseWriter.IsChunked; }
             set { 
                 if (_headersWritten) {
-                    Log.E(TAG, "Attempting to changed Chunked after headers written, ignoring");
+                    Log.To.Router.W(TAG, "Attempting to changed Chunked after headers written, ignoring");
                     return;
                 }
 
@@ -171,7 +169,9 @@ namespace Couchbase.Lite.Listener
                 _binaryBody = null;
                 _jsonBody = null;
                 _multipartWriter = value;
-                Headers["Content-Type"] = value.ContentType;
+                if (value != null) {
+                    Headers["Content-Type"] = value.ContentType;
+                }
             }
         }
         private MultipartWriter _multipartWriter;
@@ -268,12 +268,13 @@ namespace Couchbase.Lite.Listener
                         return false;
                     }
                 } else if (MultipartWriter != null) {
+                    _responseWriter.ContentLength = MultipartWriter.Length;
                     MultipartWriter.WriteAsync(_responseWriter.OutputStream).ContinueWith(t =>
                     {
                         if(t.IsCompleted && t.Result) {
                             TryClose();
                         } else {
-                            Log.I(TAG, "Multipart async write did not finish properly");
+                            Log.To.Router.I(TAG, "Multipart async write did not finish properly");
                         }
                     });
                     syncWrite = false;
@@ -296,7 +297,7 @@ namespace Couchbase.Lite.Listener
         public bool WriteData(IEnumerable<byte> data, bool finished)
         {
             if (!Chunked) {
-                Log.W(TAG, "Attempt to send streaming data when not in chunked mode");
+                Log.To.Router.W(TAG, "Attempt to send streaming data when not in chunked mode");
                 return false;
             }
 
@@ -321,7 +322,7 @@ namespace Couchbase.Lite.Listener
         public bool SendContinuousLine(IDictionary<string, object> changesDict, ChangesFeedMode mode)
         {
             if (!Chunked) {
-                Log.W(TAG, "Attempt to send streaming data when not in chunked mode");
+                Log.To.Router.W(TAG, "Attempt to send streaming data when not in chunked mode");
                 return false;
             }
 
@@ -367,7 +368,7 @@ namespace Couchbase.Lite.Listener
 
             var match = RANGE_HEADER_REGEX.Match(rangeHeader);
             if (match == null) {
-                Log.W(TAG, "Invalid request Range header value: '{0}'", rangeHeader);
+                Log.To.Router.W(TAG, "Invalid request Range header value: '{0}'", rangeHeader);
                 return;
             }
 
@@ -414,7 +415,7 @@ namespace Couchbase.Lite.Listener
             var contentRange = String.Format("bytes {0}-{1}/{2}", start, end, bodyLength);
             Headers["Content-Range"] = contentRange;
             Status = 206; // Partial Content
-            Log.D(TAG, "Content-Range: {0}", contentRange);
+            Log.To.Router.D(TAG, "Content-Range: {0}", contentRange);
         }
 
         /// <summary>
@@ -500,7 +501,7 @@ namespace Couchbase.Lite.Listener
             if (accept != null && !accept.Contains("*/*")) {
                 var responseType = BaseContentType;
                 if (responseType != null && !accept.Contains(responseType)) {
-                    Log.D(TAG, "Unacceptable type {0} (Valid: {1})", BaseContentType, _requestHeaders["Accept"]);
+                    Log.To.Router.I(TAG, "Unacceptable type {0} (Valid: {1})", BaseContentType, _requestHeaders["Accept"]);
                     Reset();
                     InternalStatus = StatusCode.NotAcceptable;
                     return false;
@@ -516,14 +517,14 @@ namespace Couchbase.Lite.Listener
                 _responseWriter.OutputStream.Write(data, 0, data.Length);
                 _responseWriter.OutputStream.Flush();
                 return true;
-            } catch(IOException) {
-                Log.W(TAG, "Error writing to HTTP response stream");
+            } catch(IOException e) {
+                Log.To.Router.W(TAG, "Error writing to HTTP response stream", e);
                 return false;
-            } catch(HttpListenerException) {
-                Log.W(TAG, "Error writing to HTTP response stream");
+            } catch(HttpListenerException e) {
+                Log.To.Router.W(TAG, "Error writing to HTTP response stream", e);
                 return false;
             } catch(ObjectDisposedException) {
-                Log.I(TAG, "Data written after disposal"); // This is normal for hanging connections who write until the client disconnects
+                Log.To.Router.I(TAG, "Data written after disposal"); // This is normal for hanging connections who write until the client disconnects
                 return false;
             }
         }
@@ -533,7 +534,7 @@ namespace Couchbase.Lite.Listener
             try {
                 _responseWriter.Close();
             } catch(IOException) {
-                Log.W(TAG, "Error closing HTTP response stream");
+                Log.To.Router.W(TAG, "Error closing HTTP response stream");
             } catch(ObjectDisposedException) {
                 //swallow (already closed)
             }

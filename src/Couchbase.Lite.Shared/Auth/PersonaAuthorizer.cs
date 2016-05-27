@@ -43,27 +43,27 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+
 using Couchbase.Lite;
 using Couchbase.Lite.Auth;
 using Couchbase.Lite.Util;
-using Sharpen;
-using System.Text;
 
 namespace Couchbase.Lite.Auth
 {
     internal class PersonaAuthorizer : Authorizer
     {
-        public const string LoginParameterAssertion = "assertion";
+        internal const string LoginParameterAssertion = "assertion";
 
         private static IDictionary<string, string> assertions;
 
-        public const string AssertionFieldEmail = "email";
+        internal const string AssertionFieldEmail = "email";
 
-        public const string AssertionFieldOrigin = "origin";
+        internal const string AssertionFieldOrigin = "origin";
 
-        public const string AssertionFieldExpiration = "exp";
+        internal const string AssertionFieldExpiration = "exp";
 
-        public const string QueryParameter = "personaAssertion";
+        internal const string QueryParameter = "personaAssertion";
 
         private bool skipAssertionExpirationCheck;
 
@@ -219,8 +219,8 @@ namespace Couchbase.Lite.Auth
             // split on "."
             if (components.Length < 4)
             {
-                throw new ArgumentException("Invalid assertion given, only " + components.Length 
-                    + " found.  Expected 4+");
+                throw new ArgumentException(String.Format("Invalid assertion given, only {0} found.  Expected 4+",
+                    components.Length));
             }
 
             var component1Decoded = Encoding.UTF8.GetString(StringUtils.ConvertFromUnpaddedBase64String(components[1]));
@@ -232,14 +232,14 @@ namespace Couchbase.Lite.Auth
                 var component1Json = mapper.ReadValue<object>(component1Decoded).AsDictionary<object, object>();
                 var principal = component1Json.Get("principal").AsDictionary<object, object>();
 
-                result.Put(AssertionFieldEmail, principal.Get("email"));
+                result[AssertionFieldEmail] = principal.Get("email");
 
                 var component3Json = mapper.ReadValue<object>(component3Decoded).AsDictionary<object, object>();
-                result.Put(AssertionFieldOrigin, component3Json.Get("aud"));
+                result[AssertionFieldOrigin] = component3Json.Get("aud");
 
                 var expObject = (long)component3Json.Get("exp");
                 Log.D(Database.TAG, "PersonaAuthorizer exp: " + expObject + " class: " + expObject.GetType());
-                var expDate = Extensions.CreateDate(expObject);
+                var expDate = Misc.CreateDate(expObject);
                 result[AssertionFieldExpiration] = expDate;
             }
             catch (IOException e)
@@ -261,6 +261,22 @@ namespace Couchbase.Lite.Auth
         private static string GetKeyForEmailAndSite(string email, string site)
         {
             return String.Format("{0}:{1}", email, site);
+        }
+
+        public override string ToString()
+        {
+            var sb = new StringBuilder("[PersonaAuthorizer (");
+            foreach (var pair in assertions) {
+                if (pair.Key.StartsWith(emailAddress)) {
+                    sb.AppendFormat("key={0} value={1}, ", 
+                        new SecureLogString(pair.Key, LogMessageSensitivity.PotentiallyInsecure),
+                        new SecureLogString(pair.Value, LogMessageSensitivity.Insecure));
+                }
+            }
+
+            sb.Remove(sb.Length - 2, 2);
+            sb.Append(")]");
+            return sb.ToString();
         }
     }
 }
