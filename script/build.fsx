@@ -103,7 +103,7 @@ Target "Package" (fun _ ->
                        | None -> ""
 
     let version = sprintf "%s%s-apx" nuspecProps.Version tcBuildValue
-    let debugVersion = sprintf "%s%s-debug-apx" nuspecProps.Version tcBuildValue
+    let debugVersion = sprintf "%s%s-debugapx" nuspecProps.Version tcBuildValue
 
     let basePath =  Path.GetFullPath "."
     // create and execute the command ourselves, since the NuGet helper doesn't allow us to set the BasePath command argument which we need
