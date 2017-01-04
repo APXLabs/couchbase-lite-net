@@ -53,7 +53,7 @@ using Couchbase.Lite.Security;
 using Couchbase.Lite.Support;
 using Couchbase.Lite.Util;
 using System.Net.Http.Headers;
-
+using Couchbase.Lite.Shared.Util;
 #if NET_3_5
 using System.Net.Couchbase;
 using CredentialCache = System.Net.CredentialCache;
@@ -66,6 +66,8 @@ namespace Couchbase.Lite.Support
     internal class CouchbaseLiteHttpClientFactory : IHttpClientFactory
     {
         const string Tag = "CouchbaseLiteHttpClientFactory";
+
+        private CouchbaseHttpClient _client;
 
         public CouchbaseLiteHttpClientFactory()
         {
@@ -132,7 +134,7 @@ namespace Couchbase.Lite.Support
         /// </summary>
         internal HttpMessageHandler BuildHandlerPipeline (CookieStore store, bool useRetryHandler)
         {
-            var handler = new HttpClientHandler {
+            var handler = new CouchbaseHttpClientHandler {
                 CookieContainer = store,
                 UseCookies = true
             };
@@ -156,26 +158,30 @@ namespace Couchbase.Lite.Support
 
         public HttpClient GetHttpClient(CookieStore cookieStore, bool useRetryHandler)
         {
-            var authHandler = BuildHandlerPipeline(cookieStore, useRetryHandler);
+            if (_client != null)
+                return _client;
+
+            // Since we are limiting the system to only a single http client, force useRetryHandler
+            var authHandler = BuildHandlerPipeline(cookieStore, true);
 
             // As the handler will not be shared, client.Dispose() needs to be 
             // called once the operation is done to release the unmanaged resources 
             // and disposes of the managed resources.
-            var client =  new HttpClient(authHandler, true) 
+            _client =  new CouchbaseHttpClient(authHandler)
             {
                 Timeout = ManagerOptions.Default.RequestTimeout
             };
 
-            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", String.Format("CouchbaseLite/{0} ({1})", Replication.SYNC_PROTOCOL_VERSION, Manager.VersionString));
+            _client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", String.Format("CouchbaseLite/{0} ({1})", Replication.SYNC_PROTOCOL_VERSION, Manager.VersionString));
 
             foreach(var header in Headers)
             {
-                var success = client.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value);
+                var success = _client.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value);
                 if (!success)
                     Log.W(Tag, "Unabled to add header to request: {0}: {1}".Fmt(header.Key, header.Value));
             }
 
-            return client;
+            return _client;
         }
 
         public MessageProcessingHandler Handler { get; private set; }
