@@ -17,3 +17,6 @@
 [submodule "vendor/Jint"]
 	path = vendor/Jint
 	url = https://github.com/Nogrod/jint
+[submodule "src/StorageEngines/SQLCipher"]
+	path = src/StorageEngines/SQLCipher
+	url = git@github.com:APXLabs/couchbase-lite-libsqlcipher.git
