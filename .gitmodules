@@ -13,3 +13,6 @@
 [submodule "src/Couchbase.Lite.Shared/vendor/SQLitePCL"]
 	path = src/Couchbase.Lite.Shared/vendor/SQLitePCL
 	url = https://github.com/APXLabs/SQLitePCL.raw.git
+[submodule "src/StorageEngines/SQLCipher"]
+	path = src/StorageEngines/SQLCipher
+	url = https://github.com/APXLabs/couchbase-lite-libsqlcipher.git
