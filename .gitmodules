@@ -10,9 +10,6 @@
 [submodule "src/Couchbase.Lite.Shared/vendor/cbforest"]
 	path = src/Couchbase.Lite.Shared/vendor/cbforest
 	url = https://github.com/couchbaselabs/cbforest
-[submodule "src/StorageEngines/SQLCipher"]
-	path = src/StorageEngines/SQLCipher
-	url = https://github.com/APXLabs/couchbase-lite-libsqlcipher.git
 [submodule "src/Couchbase.Lite.Shared/vendor/SQLitePCL"]
 	path = src/Couchbase.Lite.Shared/vendor/SQLitePCL
 	url = https://github.com/APXLabs/SQLitePCL.raw.git
